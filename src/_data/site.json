@@ -1,0 +1,8 @@
+{
+  "url": "https://example.com",
+  "lang": "en-US",
+  "title": "Site Title",
+  "description": "A fast, accessible, mostly-static website.",
+  "author": "Your Team",
+  "socialImage": "/assets/img/social-card.png"
+}

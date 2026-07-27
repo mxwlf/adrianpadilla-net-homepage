@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="{{ site.lang }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>
+      {% if title %}{{ title }} · {{ site.title }}{% else %}{{ site.title }}{% endif %}
+    </title>
+    <meta name="description" content="{{ description or site.description }}">
+
+    {# Canonical (avoid duplicate URL variants) #}
+    <link rel="canonical" href="{{ site.url }}{{ page.url }}">
+
+    {# Open Graph (rich link previews) #}
+    <meta property="og:site_name" content="{{ site.title }}">
+    <meta property="og:title" content="{{ title or site.title }}">
+    <meta property="og:description" content="{{ description or site.description }}">
+    <meta property="og:url" content="{{ site.url }}{{ page.url }}">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="{{ site.url }}{{ site.socialImage }}">
+
+    {# Minimal CSS, no frameworks #}
+    <link rel="stylesheet" href="/assets/css/main.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+
+    {% include "partials/header.njk" %}
+
+    <main id="content">
+      {{ content | safe }}
+    </main>
+
+    {% include "partials/footer.njk" %}
+
+    <script src="/assets/js/main.js" defer></script>
+  </body>
+</html>

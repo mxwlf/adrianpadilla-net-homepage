@@ -1,0 +1,27 @@
+# See https://pre-commit.com/hooks.html for more hooks
+# See https://pre-commit.com for more information
+repos:
+  - repo: https://github.com/pre-commit/sync-pre-commit-deps
+    rev: v0.0.3
+    hooks:
+      - id: sync-pre-commit-deps
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-illegal-windows-names
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: fix-byte-order-marker
+      - id: mixed-line-ending
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0 # Specify the desired version of Gitleaks
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.13.9
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]

@@ -1,0 +1,21 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": ".claude/hooks/block-dangerous-bash.sh" }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [{ "type": "command", "command": ".claude/hooks/post-edit-format.sh" }]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [{ "type": "command", "command": ".claude/hooks/run-ci-smoke.sh" }]
+      }
+    ]
+  }
+}

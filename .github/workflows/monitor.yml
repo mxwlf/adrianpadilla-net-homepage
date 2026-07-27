@@ -1,0 +1,64 @@
+name: Production monitoring
+on:
+  schedule:
+    - cron: "0 6 * * 1" # weekly on Monday at 06:00 UTC
+
+permissions:
+  contents: read
+
+env:
+  PROD_URL: ${{ vars.PROD_URL || 'https://example.com' }}
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run Lighthouse CI against production
+        run: |
+          npx @lhci/cli autorun \
+            --collect.url="$PROD_URL" \
+            --collect.numberOfRuns=3
+
+      - name: Upload Lighthouse reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-prod
+          path: .lighthouseci
+
+  security-headers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check security headers
+        run: |
+          echo "Checking security headers for $PROD_URL"
+          HEADERS=$(curl -sI "$PROD_URL")
+          echo "$HEADERS"
+
+          FAILED=0
+
+          check_header() {
+            if echo "$HEADERS" | grep -qi "$1"; then
+              echo "[PASS] $1"
+            else
+              echo "[FAIL] $1 not found"
+              FAILED=1
+            fi
+          }
+
+          check_header "X-Content-Type-Options"
+          check_header "X-Frame-Options"
+          check_header "Referrer-Policy"
+          check_header "Content-Security-Policy"
+
+          if [ "$FAILED" -eq 1 ]; then
+            echo "::warning::Some security headers are missing"
+          fi

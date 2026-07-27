@@ -1,0 +1,131 @@
+/* === Reset / Normalize === */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+img,
+picture,
+video,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* === Typography === */
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  line-height: 1.6;
+  color: #1a1a1a;
+  background-color: #fff;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  line-height: 1.2;
+  margin-bottom: 0.5em;
+}
+
+p {
+  margin-bottom: 1em;
+}
+
+a {
+  color: #0056b3;
+}
+
+a:hover {
+  text-decoration: none;
+}
+
+/* === Skip Link === */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 1rem;
+  z-index: 1000;
+  padding: 0.5rem 1rem;
+  background: #0056b3;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 0 0 0.25rem 0.25rem;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
+/* === Layout === */
+header {
+  padding: 1rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+header nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  max-width: 60rem;
+  margin: 0 auto;
+}
+
+header nav ul {
+  display: flex;
+  list-style: none;
+  gap: 1rem;
+}
+
+.site-title {
+  font-weight: 700;
+  text-decoration: none;
+  color: inherit;
+}
+
+main {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+footer {
+  padding: 1rem;
+  border-top: 1px solid #e0e0e0;
+  text-align: center;
+  font-size: 0.875rem;
+  color: #666;
+}
+
+/* === Focus Styles === */
+:focus-visible {
+  outline: 3px solid #0056b3;
+  outline-offset: 2px;
+}
+
+/* === Reduced Motion === */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
