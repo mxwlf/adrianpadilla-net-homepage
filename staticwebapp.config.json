@@ -1,6 +1,7 @@
 {
   "globalHeaders": {
       "Permissions-Policy": "accelerometer=(), ambient-light-sensor=(), autoplay=(), battery=(), camera=(), display-capture=(), document-domain=(), encrypted-media=(), execution-while-not-rendered=(), execution-while-out-of-viewport=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), navigation-override=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), usb=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=(), speaker-selection=()",
-      "Strict-Transport-Security" : "max-age=300; includeSubDomains"
+      "Strict-Transport-Security" : "max-age=300; includeSubDomains",
+      "Content-Security-Policy":"default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none';require-trusted-types-for 'script';"
   }
 }
