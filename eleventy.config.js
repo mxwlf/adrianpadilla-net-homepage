@@ -3,6 +3,11 @@ export default function (eleventyConfig) {
   eleventyConfig.addPassthroughCopy("src/assets");
   eleventyConfig.addPassthroughCopy("src/static");
 
+  // SWA reads its config from the root of output_location, not the repo root.
+  eleventyConfig.addPassthroughCopy({
+    "staticwebapp.config.json": "staticwebapp.config.json",
+  });
+
   return {
     dir: {
       input: "src",
