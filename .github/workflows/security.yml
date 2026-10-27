@@ -49,7 +49,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: OSV-Scanner
-        uses: google/osv-scanner-action@v2
+        # Pinned to an exact release: this action publishes no floating major
+        # tag, so `@v2` is unresolvable and the job fails before it starts.
+        uses: google/osv-scanner-action@v2.7.0
         with:
           scan-args: |-
             --recursive

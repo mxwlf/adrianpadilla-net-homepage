@@ -55,4 +55,7 @@ jobs:
         id: closepullrequest
         uses: Azure/static-web-apps-deploy@v1
         with:
+          # The close action authenticates too; omitting the token made every
+          # PR-close run fail with "ApiToken is invalid".
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_WONDERFUL_SKY_0F46C841E }}
           action: "close"
