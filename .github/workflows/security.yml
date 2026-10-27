@@ -49,9 +49,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: OSV-Scanner
-        # Pinned to an exact release: this action publishes no floating major
-        # tag, so `@v2` is unresolvable and the job fails before it starts.
-        uses: google/osv-scanner-action@v2.7.0
+        # Two corrections over `google/osv-scanner-action@v2`: the action lives
+        # in a subdirectory (the repo root holds a stub with no `runs:` section,
+        # which the runner rejects), and no floating major tag is published, so
+        # an exact release is required.
+        uses: google/osv-scanner-action/osv-scanner-action@v2.7.0
         with:
           scan-args: |-
             --recursive
