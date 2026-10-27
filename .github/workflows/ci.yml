@@ -1,5 +1,27 @@
+# ---------------------------------------------------------------------------
+# GitHub Actions CI — THIN WRAPPER
+# ---------------------------------------------------------------------------
+# This workflow deliberately contains no build logic. It only:
+#   1. checks out the code,
+#   2. provides the two toolchains `make ci` needs (Node for the site, Python
+#      for the pre-commit hooks),
+#   3. runs `make ci`.
+#
+# All actual checks live in the Makefile (`make ci`) and in package.json, and
+# run identically on a developer laptop. To change WHAT runs in CI, edit the
+# Makefile, package.json and .pre-commit-config.yaml — not this file. The only
+# things that belong here are platform-specific concerns that cannot live in a
+# portable script: triggers, the runner image, and prerequisite installation.
 name: CI
+
 on:
+  # Trunk-based: `main` is the only long-lived branch. Feature branches are
+  # short-lived and reach `main` only through a pull request, so the
+  # pull_request trigger is the gate — it fires for a PR from ANY head branch.
+  #
+  # The push trigger covers `main` only, deliberately: adding feature branches
+  # would run the same commits twice (once for the push, once for the PR) for no
+  # extra signal.
   pull_request:
   push:
     branches: [main]
@@ -12,8 +34,15 @@ permissions:
   contents: read
 
 jobs:
-  lint-test-build:
-    runs-on: ubuntu-latest
+  # The job id is the name GitHub reports this check under, so it is also the
+  # `context` that .github/rulesets/main-protection.json requires. Renaming it
+  # silently breaks branch protection: the required check is never reported, and
+  # pull requests wait on it forever. Change both together.
+  ci:
+    # Pinned rather than `ubuntu-latest`: that label is remapped to a new Ubuntu
+    # release periodically, which would change the build environment underneath
+    # you on GitHub's schedule instead of yours. Bump this deliberately.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
@@ -22,10 +51,26 @@ jobs:
           node-version: 20
           cache: npm
 
+      # Interpreter used to build .venv, which holds the pinned `pre-commit`
+      # that `make ci`'s `hooks` target runs. Any version >= 3.10 works (see
+      # MIN_PYTHON in the Makefile); it is pinned here only for reproducible
+      # runs, not because the hooks need this exact version.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      # Cache pre-commit hook environments keyed on the config so unchanged
+      # hooks are not rebuilt on every run.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
       - name: Install
         run: npm ci
 
-      - name: Lint + test + build
+      # The single entrypoint. Everything CI does is defined in the Makefile.
+      - name: Hooks + lint + build + test
         run: make ci
 
       - name: Upload dist artifact

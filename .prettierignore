@@ -2,3 +2,11 @@ dist/
 node_modules/
 .cache/
 .lighthouseci/
+.venv/
+
+# Branch protection as code. These files are written by `make rulesets-export`
+# straight from the GitHub API, in the canonical form scripts/github-rulesets.sh
+# normalizes to (2-space indent, sorted keys, one array element per line).
+# Prettier collapses short arrays, so letting it reformat them would make every
+# `make rulesets-export` dirty the tree and every `make lint` undo the export.
+.github/rulesets/
