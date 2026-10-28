@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-const SITE_URL = process.env.SITE_URL || "https://example.com";
+const SITE_URL = process.env.SITE_URL || "https://adrianpadilla.net";
 const DIST_DIR = path.resolve("dist");
 
 function xmlEscape(s) {

@@ -1,8 +1,8 @@
 {
-  "url": "https://example.com",
+  "url": "https://adrianpadilla.net",
   "lang": "en-US",
-  "title": "Site Title",
-  "description": "A fast, accessible, mostly-static website.",
-  "author": "Your Team",
+  "title": "Adrian Padilla Vega",
+  "description": "Personal homepage of Adrian Padilla Vega, at adrianpadilla.net.",
+  "author": "Adrian Padilla Vega",
   "socialImage": "/assets/img/social-card.png"
 }
