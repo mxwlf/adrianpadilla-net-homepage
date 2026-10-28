@@ -20,6 +20,11 @@
     <meta property="og:type" content="website">
     <meta property="og:image" content="{{ site.url }}{{ site.socialImage }}">
 
+    {# Declaring an icon stops the browser probing /favicon.ico, whose 404
+       showed up as a console error and failed Lighthouse's errors-in-console
+       audit. Placeholder artwork — replace with real branding. #}
+    <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+
     {# Minimal CSS, no frameworks #}
     <link rel="stylesheet" href="/assets/css/main.css">
   </head>
