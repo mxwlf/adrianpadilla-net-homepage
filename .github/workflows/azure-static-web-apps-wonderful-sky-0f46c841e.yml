@@ -11,7 +11,25 @@ on:
 
 jobs:
   build_and_deploy_job:
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    # Every pull_request run asks Azure for a staging environment, and the plan
+    # allows a fixed few (3 on Free, 10 on Standard). Dependabot opens them in
+    # batches — 16 at once was enough to exhaust the quota and fail the job with
+    # "This Static Web App already has the maximum number of staging
+    # environments", which also takes down the deploy for human PRs.
+    #
+    # So bot pull requests get no preview. The test is on the PR's author, not
+    # github.actor, so it holds for every synchronize regardless of who pushed,
+    # and a human taking over a Dependabot branch does get a preview.
+    #
+    # Note the actor test is deliberately inside the pull_request branch only.
+    # Hoisting it to cover the whole condition would also skip the PRODUCTION
+    # deploy whenever a Dependabot PR is merged by automation, since the push
+    # event's actor is then the bot.
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       github.event.action != 'closed' &&
+       github.event.pull_request.user.login != 'dependabot[bot]')
     runs-on: ubuntu-latest
     name: Build and Deploy Job
     permissions:
@@ -47,7 +65,12 @@ jobs:
           ###### End of Repository/Build Configurations ######
 
   close_pull_request_job:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    # Mirrors the author test above: a bot PR never got an environment, so
+    # there is nothing to tear down and no point asking Azure to close one.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     name: Close Pull Request Job
     steps:
