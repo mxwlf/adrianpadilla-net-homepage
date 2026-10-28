@@ -1,35 +1,30 @@
 name: Azure Static Web Apps CI/CD
 
+# Production deploys only — no pull request preview environments.
+#
+# Previews were removed because Azure could create them but never tear them
+# down. The close action authenticated (it printed a DeploymentId) and then the
+# content server answered "No matching static site found", on this app, every
+# time. The deployment token is valid, since the same secret deploys below;
+# repositoryUrl, provider and branch all match the repo; and passing the
+# repo_token the action's container expects changed nothing. The environments
+# for merged PRs 7, 13, 14, 29 and 30 all had to be deleted by hand.
+#
+# With a Free plan's 3 staging slots, that leak filled the quota and then
+# failed every deploy with "This Static Web App already has the maximum number
+# of staging environments" — so a broken preview teardown was taking production
+# deploys down with it. Creating nothing is what makes that impossible.
+#
+# If previews are ever wanted back, the teardown cannot rely on this action:
+# delete environments with `az staticwebapp environment delete` from a
+# scheduled job authenticated by OIDC.
 on:
   push:
-    branches:
-      - main
-  pull_request:
-    types: [opened, synchronize, reopened, closed]
     branches:
       - main
 
 jobs:
   build_and_deploy_job:
-    # Every pull_request run asks Azure for a staging environment, and the plan
-    # allows a fixed few (3 on Free, 10 on Standard). Dependabot opens them in
-    # batches — 16 at once was enough to exhaust the quota and fail the job with
-    # "This Static Web App already has the maximum number of staging
-    # environments", which also takes down the deploy for human PRs.
-    #
-    # So bot pull requests get no preview. The test is on the PR's author, not
-    # github.actor, so it holds for every synchronize regardless of who pushed,
-    # and a human taking over a Dependabot branch does get a preview.
-    #
-    # Note the actor test is deliberately inside the pull_request branch only.
-    # Hoisting it to cover the whole condition would also skip the PRODUCTION
-    # deploy whenever a Dependabot PR is merged by automation, since the push
-    # event's actor is then the bot.
-    if: >-
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       github.event.action != 'closed' &&
-       github.event.pull_request.user.login != 'dependabot[bot]')
     runs-on: ubuntu-latest
     name: Build and Deploy Job
     permissions:
@@ -63,34 +58,3 @@ jobs:
           output_location: "dist" # Built app content directory - optional
           github_id_token: ${{ steps.idtoken.outputs.result }}
           ###### End of Repository/Build Configurations ######
-
-  close_pull_request_job:
-    # Mirrors the author test above: a bot PR never got an environment, so
-    # there is nothing to tear down and no point asking Azure to close one.
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.action == 'closed' &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
-    runs-on: ubuntu-latest
-    name: Close Pull Request Job
-    permissions:
-      contents: read
-      # So GITHUB_TOKEN below can actually read the pull request.
-      pull-requests: read
-    steps:
-      - name: Close Pull Request
-        id: closepullrequest
-        uses: Azure/static-web-apps-deploy@v1
-        with:
-          # The close action authenticates too; omitting the token made every
-          # PR-close run fail with "ApiToken is invalid".
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_WONDERFUL_SKY_0F46C841E }}
-          # With only the Azure token, close authenticated (it printed a
-          # DeploymentId) and then Azure answered "No matching static site
-          # found", leaving the environment behind on every merge. The action's
-          # container exposes an INPUT_REPO_TOKEN that nothing was setting, so
-          # the likely gap is that it cannot map the pull request to its
-          # environment without GitHub API access. Unconfirmed: the only way to
-          # exercise this path is to close a real pull request.
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: "close"
