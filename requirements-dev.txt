@@ -14,13 +14,3 @@
 #
 # Pinned for determinism — bump deliberately.
 pre-commit==4.6.2
-
-# Transitive pins, present only to satisfy osv-scan. pre-commit constrains
-# virtualenv loosely and does not mention filelock at all, so OSV resolves this
-# file itself and reported 17 advisories against the old versions its resolver
-# chose (virtualenv 21.9.1, filelock 3.19.1). `pip install` was already
-# fetching these patched releases; stating them makes the scan agree with what
-# .venv actually contains. Drop them once pre-commit's own floors are high
-# enough, and keep them at or above the versions pip would otherwise resolve.
-filelock==4.2.4
-virtualenv==21.15.0
