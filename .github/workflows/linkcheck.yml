@@ -11,8 +11,18 @@ jobs:
   lychee:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Lychee
         uses: lycheeverse/lychee-action@v2
         with:
-          args: --verbose --no-progress .
+          # 429 is accepted deliberately: a rate-limited host means the link
+          # resolved and the server throttled us, which is not a broken link.
+          # Treating it as one made this job fail on whichever popular URL
+          # happened to throttle that run. Real 4xx/5xx still fail the job.
+          # Concurrency is lowered and retries added to provoke 429s less.
+          args: >-
+            --verbose --no-progress
+            --accept 200..=299,429
+            --max-concurrency 4
+            --max-retries 3
+            .

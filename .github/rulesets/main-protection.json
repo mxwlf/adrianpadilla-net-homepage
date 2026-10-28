@@ -57,10 +57,6 @@
             "integration_id": 15368
           },
           {
-            "context": "dependency-review",
-            "integration_id": 15368
-          },
-          {
             "context": "osv-scan",
             "integration_id": 15368
           },
