@@ -44,7 +44,7 @@ jobs:
     # you on GitHub's schedule instead of yours. Bump this deliberately.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -69,12 +69,20 @@ jobs:
       - name: Install
         run: npm ci
 
+      # Prerequisite installation, like `npm ci` above: `npm ci` fetches the
+      # Playwright package but not the browser binaries its e2e tests drive,
+      # and those live outside node_modules. Without this `make ci` fails in
+      # CI while passing on any laptop that has them cached. Only chromium is
+      # configured (see playwright.config.ts), so only chromium is fetched.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
       # The single entrypoint. Everything CI does is defined in the Makefile.
       - name: Hooks + lint + build + test
         run: make ci
 
       - name: Upload dist artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist
