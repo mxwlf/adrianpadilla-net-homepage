@@ -1,0 +1,26 @@
+# OSV-Scanner configuration.
+#
+# Scope note: a config file applies only to lockfiles in its own directory and
+# does NOT propagate to child directories. This one sits beside the root
+# package-lock.json, which is where the entries below are found.
+#
+# Everything here is an exception with an expiry. `ignoreUntil` makes that
+# literal: once the date passes, OSV reports the advisory again rather than
+# letting a one-off decision harden into a permanent blind spot. Re-check
+# whether a patched extract-zip exists before extending either entry.
+
+[[IgnoredVulns]]
+id = "GHSA-7pqw-9j4j-h8q3"
+ignoreUntil = 2027-04-28
+reason = """
+extract-zip, reached only through puppeteer under @lhci/cli. OSV reports no
+fixed version ("--"), so there is nothing to upgrade to; it is also a dev-only
+dependency that drives Lighthouse in CI and never reaches dist/. Removing the
+exposure means dropping Lighthouse CI, which the performance rules require."""
+
+[[IgnoredVulns]]
+id = "GHSA-jmr9-qjv8-65gv"
+ignoreUntil = 2027-04-28
+reason = """
+Same package, same dev-only path and same absence of a patched release as
+GHSA-7pqw-9j4j-h8q3 above."""
