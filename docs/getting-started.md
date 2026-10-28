@@ -135,6 +135,7 @@ permalink: /about/
 
 The `permalink` value controls the output path. **Always set it explicitly** to avoid the page URL mirroring the source file path.
 
+<!-- prettier-ignore -->
 ```yaml
 permalink: /          # → dist/index.html  (homepage)
 permalink: /about/    # → dist/about/index.html
