@@ -73,6 +73,10 @@ jobs:
       github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     name: Close Pull Request Job
+    permissions:
+      contents: read
+      # So GITHUB_TOKEN below can actually read the pull request.
+      pull-requests: read
     steps:
       - name: Close Pull Request
         id: closepullrequest
@@ -81,4 +85,12 @@ jobs:
           # The close action authenticates too; omitting the token made every
           # PR-close run fail with "ApiToken is invalid".
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_WONDERFUL_SKY_0F46C841E }}
+          # With only the Azure token, close authenticated (it printed a
+          # DeploymentId) and then Azure answered "No matching static site
+          # found", leaving the environment behind on every merge. The action's
+          # container exposes an INPUT_REPO_TOKEN that nothing was setting, so
+          # the likely gap is that it cannot map the pull request to its
+          # environment without GitHub API access. Unconfirmed: the only way to
+          # exercise this path is to close a real pull request.
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "close"
