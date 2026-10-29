@@ -4,7 +4,7 @@ test.describe("Navigation", () => {
   test("homepage loads successfully", async ({ page }) => {
     const response = await page.goto("/");
     expect(response?.status()).toBe(200);
-    await expect(page).toHaveTitle(/Site Title/);
+    await expect(page).toHaveTitle(/Adrian Padilla Vega/);
   });
 
   test("homepage has main content area", async ({ page }) => {
