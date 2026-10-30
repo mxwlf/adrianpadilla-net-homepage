@@ -42,11 +42,13 @@ The OG image at `/assets/img/social-card.png` needs to be created.
 
 ---
 
-## 4. Navigation Items
+## 4. The "Me" Page Has No Real Content
 
-The header partial (`src/_includes/partials/header.njk`) has placeholder navigation links (Home, About).
+`src/pages/about/me.njk` is a stub: name, handle, and a link to LinkedIn. The
+prototype it was ported from carried lorem ipsum in place of a bio, so there was
+nothing to bring across.
 
-**Action:** Update navigation items in the header partial to match your site structure.
+**Action:** Write the bio into `src/pages/about/me.njk`.
 
 ---
 

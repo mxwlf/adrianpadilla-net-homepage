@@ -4,7 +4,7 @@ import { test, expect } from "@playwright/test";
 // These checks assert the tags reach the rendered HTML; whether Google's
 // endpoint answers is not something a build gate should depend on.
 const MEASUREMENT_ID = "G-G7LFSQ4ZLB";
-const PAGES = ["/", "/about/", "/404.html"];
+const PAGES = ["/", "/about/", "/about/me/", "/about/this-page/", "/404.html"];
 
 test.describe("Analytics", () => {
   for (const path of PAGES) {

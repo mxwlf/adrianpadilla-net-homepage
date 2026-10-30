@@ -1,14 +1,48 @@
 ---
+layout: layouts/base.njk
 title: Home
 description: Personal homepage of Adrian Padilla Vega, at adrianpadilla.net.
 permalink: /
 ---
 
-<h1>Adrian Padilla Vega</h1>
+{# The portrait is a real <img> rather than a CSS background so that the
+   fingerprinted filenames resolve through the `asset` filter, so the browser
+   can discover and prioritise the largest element on the page, and so a phone
+   is not made to download the desktop-sized file. The JPEG is only a fallback
+   for browsers that take neither AVIF nor WebP. #}
+<section class="hero">
+  <picture>
+    <source
+      type="image/avif"
+      sizes="100vw"
+      srcset="
+        {{ '/assets/img/hero-768.avif' | asset }}   768w,
+        {{ '/assets/img/hero-1280.avif' | asset }} 1280w,
+        {{ '/assets/img/hero-1920.avif' | asset }} 1920w
+      "
+    >
+    <source
+      type="image/webp"
+      sizes="100vw"
+      srcset="
+        {{ '/assets/img/hero-768.webp' | asset }}   768w,
+        {{ '/assets/img/hero-1280.webp' | asset }} 1280w,
+        {{ '/assets/img/hero-1920.webp' | asset }} 1920w
+      "
+    >
+    <img
+      class="hero-image"
+      src="{{ '/assets/img/hero.jpg' | asset }}"
+      alt="Adrian Padilla speaking on stage, wearing a headset microphone."
+      width="1920"
+      height="800"
+      fetchpriority="high"
+    >
+  </picture>
 
-<p>
-  This is my personal homepage, published at <strong>adrianpadilla.net</strong>
-  &mdash; a small corner of the web that I own outright.
-</p>
-
-<p><a href="/about/">More about this site</a></p>
+  <div class="hero-inner container">
+    <p class="hero-greeting">Hello, I&rsquo;m</p>
+    <h1 class="hero-name">Adrian Padilla</h1>
+    <p class="hero-alias">a.k.a. mxWolf</p>
+  </div>
+</section>

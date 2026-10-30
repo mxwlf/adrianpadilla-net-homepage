@@ -1,0 +1,10 @@
+---
+layout: layouts/base.njk
+---
+
+{# Default wrapper for text pages: constrains the measure and supplies the
+   vertical rhythm. Full-bleed templates (the homepage hero) set
+   `layout: layouts/base.njk` instead and lay themselves out. #}
+<article class="page">
+  <div class="container">{{ content | safe }}</div>
+</article>
