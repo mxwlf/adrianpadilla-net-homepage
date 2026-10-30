@@ -16,6 +16,15 @@ export default [
     },
   },
   {
+    // Everything under src/assets/js ships to the browser, not to Node.
+    files: ["src/assets/js/**/*.js"],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
+    },
+  },
+  {
     // `.venv/` holds the pinned pre-commit tooling (`make setup`); some of its
     // Python packages vendor browser JS that is not ours to lint.
     ignores: ["dist/", "node_modules/", ".cache/", ".venv/", ".lighthouseci/"],

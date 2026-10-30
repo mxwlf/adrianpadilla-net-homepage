@@ -10,13 +10,24 @@ test.describe("Accessibility", () => {
     expect(results.violations).toEqual([]);
   });
 
-  test("about page has no a11y violations", async ({ page }) => {
-    const response = await page.goto("/about/");
-    // Only run a11y check if the page exists
-    if (response?.status() === 200) {
-      const results = await new AxeBuilder({ page }).analyze();
-      expect(results.violations).toEqual([]);
-    }
+  for (const path of ["/about/", "/about/me/", "/about/this-page/"]) {
+    test(`${path} has no a11y violations`, async ({ page }) => {
+      const response = await page.goto(path);
+      // Only run a11y check if the page exists
+      if (response?.status() === 200) {
+        const results = await new AxeBuilder({ page }).analyze();
+        expect(results.violations).toEqual([]);
+      }
+    });
+  }
+
+  test("homepage has no a11y violations in the dark theme", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.goto("/");
+
+    const results = await new AxeBuilder({ page }).analyze();
+
+    expect(results.violations).toEqual([]);
   });
 
   test("skip link exists and points to main content", async ({ page }) => {
