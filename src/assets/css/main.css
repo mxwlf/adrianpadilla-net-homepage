@@ -1,12 +1,16 @@
 /* === Fonts ===
    Self-hosted: the CSP allows no third-party origins, so fonts cannot come
-   from a CDN. Latin subset only, which is all this site's copy needs. */
+   from a CDN. Latin subset only, which is all this site's copy needs.
+
+   The paths are relative rather than root-relative so they resolve the same
+   way from this file's source location and from dist/assets/css/ — which also
+   lets the link checker verify them without being told where the site root is. */
 @font-face {
   font-family: Poppins;
   font-style: normal;
   font-weight: 300;
   font-display: swap;
-  src: url("/static/fonts/poppins-v24-latin-300.woff2") format("woff2");
+  src: url("../../static/fonts/poppins-v24-latin-300.woff2") format("woff2");
 }
 
 @font-face {
@@ -14,7 +18,7 @@
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url("/static/fonts/poppins-v24-latin-400.woff2") format("woff2");
+  src: url("../../static/fonts/poppins-v24-latin-400.woff2") format("woff2");
 }
 
 @font-face {
@@ -22,7 +26,7 @@
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  src: url("/static/fonts/poppins-v24-latin-500.woff2") format("woff2");
+  src: url("../../static/fonts/poppins-v24-latin-500.woff2") format("woff2");
 }
 
 @font-face {
@@ -30,7 +34,7 @@
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url("/static/fonts/poppins-v24-latin-600.woff2") format("woff2");
+  src: url("../../static/fonts/poppins-v24-latin-600.woff2") format("woff2");
 }
 
 /* === Theme tokens ===
