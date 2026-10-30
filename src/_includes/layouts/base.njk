@@ -25,8 +25,8 @@
        audit. Placeholder artwork — replace with real branding. #}
     <link rel="icon" href="{{ '/assets/img/favicon.svg' | asset }}" type="image/svg+xml">
 
-    {# Poppins is self-hosted: the CSP allows no third-party origins, so a
-       Google Fonts <link> would simply be blocked. Only the two weights used
+    {# Poppins is self-hosted: the CSP allows no third-party font or style
+       origins, so a Google Fonts <link> would simply be blocked. Only the two weights used
        above the fold are preloaded; 500/600 (nav) arrive with font-display:
        swap. Filenames carry the upstream font version, which is what makes
        the immutable Cache-Control on /static/fonts/* in
@@ -55,6 +55,12 @@
        DOMContentLoaded, which is early enough to apply a stored theme choice
        without a flash of the other one. #}
     <script src="{{ '/assets/js/main.js' | asset }}" defer></script>
+
+    {# Google tag (gtag.js). Both tags are async/deferred, so neither blocks
+       rendering; the bootstrap Google documents inline lives in analytics.js
+       because inline scripts are forbidden here and blocked by the CSP. #}
+    <script async src="https://www.googletagmanager.com/gtag/js?id={{ site.gaMeasurementId }}"></script>
+    <script src="{{ '/assets/js/analytics.js' | asset }}" data-measurement-id="{{ site.gaMeasurementId }}" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#content">Skip to content</a>

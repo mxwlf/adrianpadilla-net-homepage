@@ -16,9 +16,13 @@ export default [
     },
   },
   {
-    // Everything under src/assets/js ships to the browser, not to Node.
+    // Everything under src/assets/js ships to the browser, not to Node, and as
+    // classic <script> tags rather than modules — `document.currentScript`,
+    // which analytics.js reads its measurement id from, is only populated for
+    // those.
     files: ["src/assets/js/**/*.js"],
     languageOptions: {
+      sourceType: "script",
       globals: {
         ...globals.browser,
       },

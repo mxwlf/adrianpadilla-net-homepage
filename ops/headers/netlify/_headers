@@ -5,7 +5,9 @@
   Permissions-Policy: camera=(), microphone=(), geolocation=()
 
   # Start with report-only CSP, then enforce
-  Content-Security-Policy: default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+  # google-analytics.com / googletagmanager.com are allowed for Google Analytics
+  # (gtag.js), loaded from layouts/base.njk on every page.
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://www.googletagmanager.com; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
