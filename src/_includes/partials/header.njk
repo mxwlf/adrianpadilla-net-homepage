@@ -1,6 +1,23 @@
 <header>
   <div class="header-inner">
-    <a href="/" class="site-logo">mxwolf</a>
+    {# The mark carries no information the wordmark beside it does not already
+       give, so alt="" keeps a screen reader from announcing the link twice.
+
+       The webp is 72px square — twice the rendered size, so it stays sharp on
+       a 2x display without paying for the full-resolution source. logo.png is
+       the fallback for the browsers that cannot decode webp. #}
+    <a href="/" class="site-logo">
+      <picture>
+        <source type="image/webp" srcset="{{ '/assets/img/logo-72.webp' | asset }}">
+        <img
+          src="{{ '/assets/img/logo.png' | asset }}"
+          alt=""
+          width="36"
+          height="36"
+        >
+      </picture>
+      mxwolf
+    </a>
 
     <nav class="site-nav" aria-label="Primary">
       <ul class="nav-list">
