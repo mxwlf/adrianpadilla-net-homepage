@@ -25,9 +25,36 @@
        audit. Placeholder artwork — replace with real branding. #}
     <link rel="icon" href="{{ '/assets/img/favicon.svg' | asset }}" type="image/svg+xml">
 
+    {# Poppins is self-hosted: the CSP allows no third-party origins, so a
+       Google Fonts <link> would simply be blocked. Only the two weights used
+       above the fold are preloaded; 500/600 (nav) arrive with font-display:
+       swap. Filenames carry the upstream font version, which is what makes
+       the immutable Cache-Control on /static/fonts/* in
+       staticwebapp.config.json safe. #}
+    <link
+      rel="preload"
+      href="/static/fonts/poppins-v24-latin-400.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    >
+    <link
+      rel="preload"
+      href="/static/fonts/poppins-v24-latin-300.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    >
+
     {# Minimal CSS, no frameworks. The `asset` filter resolves the
        content-hashed filename so /assets/* can be cached immutably. #}
     <link rel="stylesheet" href="{{ '/assets/css/main.css' | asset }}">
+
+    {# Deferred, so not render-blocking, but discovered here rather than at the
+       end of <body>: deferred scripts run once parsing finishes and before
+       DOMContentLoaded, which is early enough to apply a stored theme choice
+       without a flash of the other one. #}
+    <script src="{{ '/assets/js/main.js' | asset }}" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#content">Skip to content</a>
@@ -39,7 +66,5 @@
     </main>
 
     {% include "partials/footer.njk" %}
-
-    <script src="{{ '/assets/js/main.js' | asset }}" defer></script>
   </body>
 </html>

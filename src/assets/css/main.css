@@ -1,3 +1,79 @@
+/* === Fonts ===
+   Self-hosted: the CSP allows no third-party origins, so fonts cannot come
+   from a CDN. Latin subset only, which is all this site's copy needs. */
+@font-face {
+  font-family: Poppins;
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("/static/fonts/poppins-v24-latin-300.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: Poppins;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/static/fonts/poppins-v24-latin-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: Poppins;
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/static/fonts/poppins-v24-latin-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: Poppins;
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/static/fonts/poppins-v24-latin-600.woff2") format("woff2");
+}
+
+/* === Theme tokens ===
+   Light is the default. Dark comes from the OS preference, which is what makes
+   the theme work with JavaScript disabled; [data-theme] on <html> is set by
+   main.js only when the visitor has overridden that preference. */
+:root {
+  /* Family names are quoted because inside a custom property Stylelint cannot
+     tell a font stack from a list of keywords it wants lowercased. */
+  --font-body: "Poppins", system-ui, -apple-system, "Segoe UI", "Roboto", sans-serif;
+  --color-bg: #fff;
+  --color-text: #555;
+  --color-heading: #333;
+  --color-rule: #e6e6e6;
+
+  /* Hero copy sits on the photograph, so it keeps one value in both themes. */
+  --color-hero-text: #eee4e4;
+  --measure: 44rem;
+  --gutter: 50px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg: #333;
+    --color-text: #fff;
+    --color-heading: #fff;
+    --color-rule: #3f3f3f;
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-bg: #333;
+  --color-text: #fff;
+  --color-heading: #fff;
+  --color-rule: #3f3f3f;
+
+  color-scheme: dark;
+}
+
 /* === Reset / Normalize === */
 *,
 *::before,
@@ -20,39 +96,56 @@ svg {
   max-width: 100%;
 }
 
+ul {
+  list-style: none;
+}
+
+/* The UA rule for [hidden] is a bare attribute selector, so any component rule
+   that sets `display` outranks it — which would leave the theme toggle on
+   screen and inert when its script has not run. */
+[hidden] {
+  display: none !important;
+}
+
 /* === Typography === */
 body {
-  font-family:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    "Helvetica Neue",
-    Arial,
-    sans-serif;
-  line-height: 1.6;
-  color: #1a1a1a;
-  background-color: #fff;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--color-text);
+  background-color: var(--color-bg);
 }
 
 h1,
 h2,
 h3,
 h4 {
+  font-weight: 400;
   line-height: 1.2;
-  margin-bottom: 0.5em;
-}
-
-p {
-  margin-bottom: 1em;
+  color: var(--color-heading);
 }
 
 a {
-  color: #0056b3;
+  color: inherit;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: color 0.3s ease;
 }
 
 a:hover {
-  text-decoration: none;
+  color: var(--color-heading);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* === Skip Link === */
@@ -62,9 +155,9 @@ a:hover {
   left: 1rem;
   z-index: 1000;
   padding: 0.5rem 1rem;
-  background: #0056b3;
   color: #fff;
   text-decoration: none;
+  background: #1f1f1f;
   border-radius: 0 0 0.25rem 0.25rem;
 }
 
@@ -72,50 +165,398 @@ a:hover {
   top: 0;
 }
 
-/* === Layout === */
-header {
-  padding: 1rem;
-  border-bottom: 1px solid #e0e0e0;
-}
-
-header nav {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  max-width: 60rem;
-  margin: 0 auto;
-}
-
-header nav ul {
-  display: flex;
-  list-style: none;
-  gap: 1rem;
-}
-
-.site-title {
-  font-weight: 700;
-  text-decoration: none;
-  color: inherit;
+/* === Shared layout === */
+.container {
+  width: 100%;
+  max-width: 1140px;
+  padding-inline: 15px;
+  margin-inline: auto;
 }
 
 main {
-  max-width: 60rem;
-  margin: 0 auto;
-  padding: 2rem 1rem;
+  flex: 1 0 auto;
 }
 
-footer {
-  padding: 1rem;
-  border-top: 1px solid #e0e0e0;
+/* === Header === */
+.header-inner {
+  display: flex;
+  column-gap: 30px;
+  align-items: center;
+  min-height: 110px;
+  padding-inline: var(--gutter);
+}
+
+.site-logo {
+  flex: 0 0 auto;
+  text-decoration: none;
+}
+
+/* Nav takes the slack so the logo and the actions sit at the two edges and the
+   links stay optically centred, as in the design. */
+.site-nav {
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+.nav-list {
+  display: flex;
+  column-gap: 55px;
+  align-items: center;
+}
+
+.nav-list > li {
+  position: relative;
+}
+
+.nav-link {
+  display: block;
+  padding-block: 40px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 30px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.nav-link:hover,
+.nav-link[aria-current] {
+  font-weight: 600;
+  color: var(--color-heading);
+}
+
+/* Submenu: a CSS-only disclosure. Focusing the trigger puts :focus-within on
+   its <li>, which reveals the panel, so the submenu links are reachable by
+   keyboard in the very next Tab — no aria-expanded this markup could not keep
+   honest without a script. */
+.submenu-trigger::after {
+  display: inline-block;
+  width: 0.4em;
+  height: 0.4em;
+  margin-bottom: 0.15em;
+  margin-left: 0.5em;
+  content: "";
+  border-right: 1px solid currentcolor;
+  border-bottom: 1px solid currentcolor;
+  transform: rotate(45deg);
+}
+
+.submenu {
+  position: absolute;
+  top: 100%;
+  left: -20px;
+  z-index: 99;
+  width: 250px;
+  margin-top: 20px;
+  visibility: hidden;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-rule);
+  box-shadow: 0 3px 5px rgb(0 0 0 / 10%);
+  opacity: 0;
+
+  /* Named rather than `all`, which would also animate the panel's background
+     and border every time the theme is switched. */
+  transition:
+    opacity 0.3s ease,
+    margin-top 0.3s ease,
+    visibility 0.3s ease;
+}
+
+.has-submenu:hover > .submenu,
+.has-submenu:focus-within > .submenu {
+  margin-top: 0;
+  visibility: visible;
+  opacity: 1;
+}
+
+.submenu li + li {
+  border-top: 1px solid var(--color-rule);
+}
+
+.submenu-link {
+  display: block;
+  padding: 10px 20px;
+  font-size: 14px;
+  line-height: 20px;
+  text-decoration: none;
+}
+
+.submenu-link:hover,
+.submenu-link[aria-current] {
+  color: var(--color-heading);
+}
+
+/* Submenu links fill the panel, so an offset focus ring would spill outside. */
+.submenu-link:focus-visible {
+  outline-offset: -3px;
+}
+
+/* === Header actions === */
+.header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  column-gap: 25px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.theme-toggle,
+.social-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: inherit;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  transition: color 0.3s ease;
+}
+
+.theme-toggle:hover,
+.social-link:hover {
+  color: var(--color-heading);
+}
+
+.social-link svg {
+  width: 16px;
+  height: 16px;
+  fill: currentcolor;
+}
+
+.theme-toggle svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+/* The icon shows the theme the button switches *to*: a moon while light, a sun
+   while dark. aria-pressed carries the same state for assistive tech. */
+.icon-sun {
+  display: none;
+}
+
+.theme-toggle[aria-pressed="true"] .icon-sun {
+  display: block;
+}
+
+.theme-toggle[aria-pressed="true"] .icon-moon {
+  display: none;
+}
+
+/* === Hero === */
+.hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 800px;
+  overflow: hidden;
+  background-color: #111;
+}
+
+.hero-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 70% center;
+}
+
+/* Guarantees contrast for the copy at widths where the subject crops into it.
+   Over the near-black left edge of the photograph it is imperceptible. */
+.hero::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(to right, rgb(0 0 0 / 65%) 0%, rgb(0 0 0 / 0%) 60%);
+}
+
+.hero-inner {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-greeting,
+.hero-alias {
+  font-size: 45px;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--color-hero-text);
+}
+
+.hero-name {
+  margin-block: 8px;
+  font-size: 80px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--color-hero-text);
+}
+
+/* === Text pages ===
+   These share the hero's container, so their left edge lines up with the hero
+   copy; the measure is capped on the blocks themselves. */
+.page {
+  padding-block: 80px;
+}
+
+.page h1 {
+  max-width: var(--measure);
+  margin-bottom: 1.25rem;
+  font-size: 36px;
+  line-height: 42px;
+}
+
+.page p {
+  max-width: var(--measure);
+  margin-bottom: 1rem;
+}
+
+.page ul {
+  max-width: var(--measure);
+  padding-left: 1.25rem;
+  margin-bottom: 1rem;
+  list-style: disc;
+}
+
+.page a {
+  text-decoration: underline;
+}
+
+/* === Footer === */
+.site-footer {
+  padding-block: 30px;
   text-align: center;
-  font-size: 0.875rem;
-  color: #666;
+}
+
+.footer-text {
+  font-size: 14px;
+  line-height: 30px;
+  text-transform: uppercase;
 }
 
 /* === Focus Styles === */
 :focus-visible {
-  outline: 3px solid #0056b3;
-  outline-offset: 2px;
+  outline: 2px solid currentcolor;
+  outline-offset: 4px;
+}
+
+/* === Responsive ===
+   Breakpoints follow the design's: the hero and its type step down together. */
+@media (width <= 1599px) {
+  .hero {
+    height: 600px;
+  }
+}
+
+@media (width <= 1199px) {
+  :root {
+    --gutter: 40px;
+  }
+
+  .nav-list {
+    column-gap: 30px;
+  }
+
+  .hero {
+    height: 550px;
+  }
+}
+
+@media (width <= 991px) {
+  .hero {
+    height: 400px;
+  }
+
+  .hero-greeting,
+  .hero-alias {
+    font-size: 40px;
+  }
+
+  .hero-name {
+    font-size: 60px;
+  }
+
+  .page {
+    padding-block: 60px;
+  }
+}
+
+@media (width <= 767px) {
+  /* Two top-level links fit a phone without a drawer, so the header just
+     stacks: logo and actions on one row, nav beneath. */
+  .header-inner {
+    flex-wrap: wrap;
+    min-height: 0;
+    padding-block: 25px;
+  }
+
+  .site-nav {
+    flex-basis: 100%;
+    order: 3;
+    justify-content: flex-start;
+  }
+
+  .nav-link {
+    padding-block: 0;
+  }
+
+  .submenu {
+    margin-top: 10px;
+  }
+
+  .has-submenu:hover > .submenu,
+  .has-submenu:focus-within > .submenu {
+    margin-top: 0;
+  }
+
+  .header-actions {
+    flex: 1 1 auto;
+  }
+
+  .hero {
+    height: 300px;
+  }
+
+  .hero-greeting,
+  .hero-alias {
+    font-size: 36px;
+  }
+
+  .hero-name {
+    font-size: 50px;
+  }
+}
+
+@media (width <= 575px) {
+  :root {
+    --gutter: 25px;
+  }
+
+  .hero-greeting,
+  .hero-alias {
+    font-size: 30px;
+  }
+
+  .hero-name {
+    font-size: 40px;
+  }
+}
+
+@media (width <= 479px) {
+  .hero-greeting,
+  .hero-alias {
+    font-size: 24px;
+  }
+
+  .hero-name {
+    font-size: 32px;
+  }
 }
 
 /* === Reduced Motion === */
@@ -123,9 +564,9 @@ footer {
   *,
   *::before,
   *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
   }
 }
