@@ -18,15 +18,16 @@
     <meta property="og:description" content="{{ description or site.description }}">
     <meta property="og:url" content="{{ site.url }}{{ page.url }}">
     <meta property="og:type" content="website">
-    <meta property="og:image" content="{{ site.url }}{{ site.socialImage }}">
+    <meta property="og:image" content="{{ site.url }}{{ site.socialImage | asset }}">
 
     {# Declaring an icon stops the browser probing /favicon.ico, whose 404
        showed up as a console error and failed Lighthouse's errors-in-console
        audit. Placeholder artwork — replace with real branding. #}
-    <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="{{ '/assets/img/favicon.svg' | asset }}" type="image/svg+xml">
 
-    {# Minimal CSS, no frameworks #}
-    <link rel="stylesheet" href="/assets/css/main.css">
+    {# Minimal CSS, no frameworks. The `asset` filter resolves the
+       content-hashed filename so /assets/* can be cached immutably. #}
+    <link rel="stylesheet" href="{{ '/assets/css/main.css' | asset }}">
   </head>
   <body>
     <a class="skip-link" href="#content">Skip to content</a>
@@ -39,6 +40,6 @@
 
     {% include "partials/footer.njk" %}
 
-    <script src="/assets/js/main.js" defer></script>
+    <script src="{{ '/assets/js/main.js' | asset }}" defer></script>
   </body>
 </html>
