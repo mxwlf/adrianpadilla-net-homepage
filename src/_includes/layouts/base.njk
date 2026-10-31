@@ -58,9 +58,19 @@
 
     {# Google tag (gtag.js). Both tags are async/deferred, so neither blocks
        rendering; the bootstrap Google documents inline lives in analytics.js
-       because inline scripts are forbidden here and blocked by the CSP. #}
+       because inline scripts are forbidden here and blocked by the CSP.
+
+       Both tags are emitted in every build, including local ones. analytics.js
+       decides at runtime whether to measure, from the canonical URL passed
+       below: that keeps one artifact for dev, CI and production while leaving
+       the development loop out of the property. #}
     <script async src="https://www.googletagmanager.com/gtag/js?id={{ site.gaMeasurementId }}"></script>
-    <script src="{{ '/assets/js/analytics.js' | asset }}" data-measurement-id="{{ site.gaMeasurementId }}" defer></script>
+    <script
+      src="{{ '/assets/js/analytics.js' | asset }}"
+      data-measurement-id="{{ site.gaMeasurementId }}"
+      data-site-url="{{ site.url }}"
+      defer
+    ></script>
   </head>
   <body>
     <a class="skip-link" href="#content">Skip to content</a>
