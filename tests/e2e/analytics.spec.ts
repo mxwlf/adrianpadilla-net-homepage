@@ -4,6 +4,7 @@ import { test, expect } from "@playwright/test";
 // These checks assert the tags reach the rendered HTML; whether Google's
 // endpoint answers is not something a build gate should depend on.
 const MEASUREMENT_ID = "G-G7LFSQ4ZLB";
+const SITE_URL = "https://adrianpadilla.net";
 const PAGES = ["/", "/about/", "/about/me/", "/about/this-page/", "/404.html"];
 
 test.describe("Analytics", () => {
@@ -22,22 +23,30 @@ test.describe("Analytics", () => {
       await expect(bootstrap).toHaveCount(1);
       await expect(bootstrap).toHaveAttribute("src", /^\/assets\/js\/analytics(\.[a-f0-9]+)?\.js$/);
       await expect(bootstrap).toHaveAttribute("defer", "");
+      await expect(bootstrap).toHaveAttribute("data-site-url", SITE_URL);
     });
   }
 
-  test("the bootstrap queues the config command for gtag.js", async ({ page }) => {
+  // The flip side of the tags above: they ship everywhere, but the GA4
+  // page_view comes from the `config` command, and this run is not real
+  // traffic — it is localhost, driven by a webdriver. Withholding the command
+  // is what keeps `make ci` out of the property. tests/unit/analytics.test.mjs
+  // covers the production host, which a browser on localhost cannot reach.
+  test("the bootstrap measures nothing outside production", async ({ page }) => {
     await page.goto("/");
 
-    // dataLayer is what gtag.js drains when it loads, so a queued `config`
-    // command for this property is the real contract of the bootstrap. Its
-    // entries are `arguments` objects, hence Array.from.
+    // dataLayer is what gtag.js drains when it loads. Its entries are
+    // `arguments` objects, hence Array.from.
     const commands = await page.evaluate(() => {
-      const queue: ArrayLike<unknown>[] =
-        (window as unknown as { dataLayer?: ArrayLike<unknown>[] }).dataLayer ?? [];
-      return queue.map((entry) => Array.from(entry).map(String));
+      const queue: ArrayLike<unknown>[] | undefined = (
+        window as unknown as { dataLayer?: ArrayLike<unknown>[] }
+      ).dataLayer;
+      return queue?.map((entry) => Array.from(entry).map(String));
     });
 
-    expect(commands).toContainEqual(["config", MEASUREMENT_ID]);
+    // Defined, so gtag.js finds the queue it expects, but carrying no config.
+    expect(commands).toBeDefined();
+    expect(commands).not.toContainEqual(["config", MEASUREMENT_ID]);
   });
 
   // The site must work without JavaScript (project constitution): analytics is
