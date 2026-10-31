@@ -72,6 +72,11 @@ export default function (eleventyConfig) {
 
   eleventyConfig.addPassthroughCopy("src/static");
 
+  // Clients that ask for /favicon.ico without reading the markup — feed
+  // readers, link unfurlers, bookmark tools — only ever look at the site root,
+  // so this one lands there rather than under the fingerprinted /assets/.
+  eleventyConfig.addPassthroughCopy({ "src/favicon.ico": "favicon.ico" });
+
   // SWA reads its config from the root of output_location, not the repo root.
   eleventyConfig.addPassthroughCopy({
     "staticwebapp.config.json": "staticwebapp.config.json",
