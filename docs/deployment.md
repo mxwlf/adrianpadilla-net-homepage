@@ -254,6 +254,81 @@ Reviewers are committed as **logins** and resolved to numeric ids at apply time,
 because user ids are account-scoped — the same portability rule
 `scripts/github-rulesets.sh` documents.
 
+### Production promotion, and the `main` bypass
+
+Promote with **Actions → Promote to production → Run workflow**, giving a
+version. The run pauses for the `production` environment's required reviewer;
+approving it is the explicit OK, and GitHub records the result as a Deployment.
+
+Any published version can be promoted, so **a rollback is a promotion of an
+earlier version** — not a revert commit and a rebuild.
+
+Production needs its own repository variables:
+
+```sh
+gh variable set PROD_SUBSCRIPTION_ID     --body '0af99616-1635-473a-8cbb-9ceb60f73388'
+gh variable set PROD_RESOURCE_GROUP      --body 'adrianpadilla-net-homepage_group'
+gh variable set PROD_STATIC_WEB_APP_NAME --body 'adrianpadilla-net-homepage'
+```
+
+The deploy identity also needs `Contributor` on that resource group, and a
+federated credential for `repo:mxwlf/adrianpadilla-net-homepage:environment:production`
+(created alongside the test one above).
+
+**The one control this design costs.** `main` accepts only reviewed pull
+requests, and the `record` job advances it by calling the merges API, which the
+ruleset refuses. For it to work, the release GitHub App must be listed in
+`main-protection.json`'s `bypass_actors` with `bypass_mode: "always"`:
+
+```sh
+# APP_ID here is the App's *installation* integration id, not the app id used
+# by create-github-app-token. Find it with:
+gh api "repos/mxwlf/adrianpadilla-net-homepage/installation" --jq '.app_id'
+```
+
+Add it through **Settings → Rules → main-protection → Bypass list**, then run
+`make rulesets-export` to bring the change back into the repository — otherwise
+the next `make rulesets-apply` silently reverts it.
+
+This genuinely weakens `main`: an identity gains the ability to write to it
+outside a pull request, which nothing could do before. An App rather than a
+personal access token is the mitigation — scoped to this repository, visible in
+the audit log, and revocable in one click. If that trade is not worth it, drop
+the `record` job: the release tag and the Deployment record already state what
+is live, and `main` simply stops tracking it.
+
+Until the bypass is in place the `record` job fails with a 403 while `promote`
+stays green. That is intentional: production _is_ updated at that point, and a
+stale `main` should not look like a failed deploy.
+
+### Preview environments: do not re-enable them casually
+
+The retired `azure-static-web-apps-*.yml` workflow carried this history, which
+is worth keeping:
+
+> Previews were removed because Azure could create them but never tear them
+> down. The close action authenticated (it printed a DeploymentId) and then the
+> content server answered "No matching static site found", on this app, every
+> time. The deployment token was valid, `repositoryUrl`, `provider` and `branch`
+> all matched the repo, and passing the `repo_token` the action's container
+> expects changed nothing. The environments for merged PRs 7, 13, 14, 29 and 30
+> all had to be deleted by hand.
+>
+> With a Free plan's 3 staging slots, that leak filled the quota and then failed
+> every deploy with "This Static Web App already has the maximum number of
+> staging environments" — so a broken preview teardown was taking production
+> deploys down with it.
+
+If previews are ever wanted back, the teardown cannot rely on that action:
+delete environments with `az staticwebapp environment delete` from a scheduled
+job authenticated by OIDC.
+
+Both deploy workflows now end by asserting that no non-default environment
+exists, and the promotion passes `production_branch` explicitly — the action
+classifies a deploy as a _preview_ when it believes the current branch is not
+the production one, and a dispatched workflow runs on whatever ref it was
+started from.
+
 ### A note on `infra.yml`
 
 It carries `paths:` filters, so it does not run on every pull request. It must

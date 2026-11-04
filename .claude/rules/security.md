@@ -5,7 +5,7 @@ paths:
 
 # Security rules
 
-- Content Security Policy (CSP) must be configured in the hosting provider's `_headers` file; default to `default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`.
+- Content Security Policy (CSP) and the other response headers live in the committed `staticwebapp.config.json`, which is the single source both environments derive from at packaging time (`scripts/release-package.mjs`). Default to `default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`. Do not add a per-environment header override: the only sanctioned difference is `X-Robots-Tag` on the test host.
 - No inline `<script>` or `<style>` tags; all JS and CSS must be in external files.
 - Security headers are required: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`.
 - Never commit secrets, API keys, or credentials; use environment variables.
