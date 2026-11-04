@@ -174,6 +174,86 @@ and was rejected: it makes the hostname a zone apex, which forces Azure's
 report success without confirming — and a zone apex cannot hold a CNAME, while
 Azure DNS cannot point an ALIAS record at a Static Web App.
 
+### The deploy identity, with no stored credentials
+
+Deployments authenticate to Azure by **workload identity federation**: GitHub
+mints a short-lived OIDC token, Azure trusts it for a specific subject, and no
+client secret or storage key exists anywhere.
+
+Create the app registration and trust the two environments:
+
+```sh
+TENANT=6dbf3e28-8c7c-41fe-b397-a347b389a329
+REPO=mxwlf/adrianpadilla-net-homepage
+
+APP_ID=$(az ad app create --display-name github-adrianpadilla-net-homepage \
+  --query appId --output tsv)
+az ad sp create --id "$APP_ID"
+
+for env in test production; do
+  az ad app federated-credential create --id "$APP_ID" --parameters "{
+    \"name\": \"github-env-${env}\",
+    \"issuer\": \"https://token.actions.githubusercontent.com\",
+    \"subject\": \"repo:${REPO}:environment:${env}\",
+    \"audiences\": [\"api://AzureADTokenExchange\"]
+  }"
+done
+```
+
+The subject is **environment-scoped**, which is the control that matters: a job
+declaring `environment: test` receives a token whose subject is
+`…:environment:test`, so it cannot obtain credentials for production. Production
+credentials are reachable only from a job that declared `environment: production`
+— and that job cannot start until the required reviewer approves it.
+
+Grant the service principal what it needs, and nothing else:
+
+```sh
+SP_ID=$(az ad sp show --id "$APP_ID" --query id --output tsv)
+TEST_SUB=<test subscription guid>
+GROUP=<test resource group>
+
+# Manage the Static Web App and read its deployment token.
+az role assignment create --assignee-object-id "$SP_ID" \
+  --assignee-principal-type ServicePrincipal --role Contributor \
+  --scope "/subscriptions/${TEST_SUB}/resourceGroups/${GROUP}"
+```
+
+No DNS role, in any subscription — see the test environment section above for
+why. For OpenTofu state, pass `CI_PRINCIPAL_ID="$SP_ID"` to `make tf-bootstrap`,
+which scopes `Storage Blob Data Contributor` to the state container alone.
+
+### Repository variables
+
+Set once, after `make tf-apply` (the values come from `tofu output`):
+
+```sh
+gh variable set AZURE_TENANT_ID           --body "$TENANT"
+gh variable set AZURE_CLIENT_ID           --body "$APP_ID"
+gh variable set TEST_SUBSCRIPTION_ID      --body "$TEST_SUB"
+gh variable set TEST_RESOURCE_GROUP       --body "$(tofu -chdir=infra/test output -raw resource_group_name)"
+gh variable set TEST_STATIC_WEB_APP_NAME  --body "$(tofu -chdir=infra/test output -raw static_web_app_name)"
+gh variable set TEST_HOSTNAME             --body 'test.adrianpadilla.net'
+```
+
+These are **variables, not secrets**. None of them is confidential — a client id
+and a subscription id are identifiers, not credentials, and the thing that
+actually authorises a deployment is the federated subject plus the environment's
+approval rule.
+
+### The deployment environments
+
+```sh
+make environments-apply   # create them from .github/environments/
+make environments-diff    # fail if GitHub has drifted
+make environments-show    # print the live configuration
+```
+
+`production` carries a required reviewer; `test` deliberately carries none.
+Reviewers are committed as **logins** and resolved to numeric ids at apply time,
+because user ids are account-scoped — the same portability rule
+`scripts/github-rulesets.sh` documents.
+
 ### A note on `infra.yml`
 
 It carries `paths:` filters, so it does not run on every pull request. It must

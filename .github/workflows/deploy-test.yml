@@ -1,0 +1,145 @@
+# ---------------------------------------------------------------------------
+# Deploy to test — the release package, unmodified
+# ---------------------------------------------------------------------------
+# Downloads the package release.yml built, verifies its digests, and deploys the
+# `site/` bytes to test.adrianpadilla.net. It does NOT build: `skip_app_build`
+# is on and the content is already compiled. That is the whole point — the bytes
+# that reach production later are the bytes verified here.
+#
+# NO LONG-LIVED AZURE CREDENTIALS. azure/login authenticates by workload
+# identity federation against the `test` environment's OIDC subject
+# (repo:mxwlf/adrianpadilla-net-homepage:environment:test), and the Static Web
+# Apps deployment token is fetched at deploy time rather than stored as a
+# secret. A job in a different environment cannot mint this one's token.
+#
+# THE PREVIEW-ENVIRONMENT CHECK AT THE END IS DELIBERATE. Azure once created
+# staging environments on this account and never tore them down, filling the
+# Free plan's three slots and breaking production deploys until they were
+# removed by hand. That happened on `pull_request` events, which this workflow
+# does not use — but the last step asserts it rather than assuming it.
+
+name: Deploy to test
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-test
+  cancel-in-progress: false
+
+jobs:
+  deploy-test:
+    runs-on: ubuntu-24.04
+    environment:
+      name: test
+      url: https://${{ vars.TEST_HOSTNAME }}
+    permissions:
+      contents: read
+      id-token: write # workload identity federation to Azure
+    steps:
+      - name: Download the release package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          mkdir -p package
+          gh release download "$TAG" \
+            --pattern 'release-*.tar.gz' \
+            --pattern 'SHA256SUMS' \
+            --pattern 'manifest.json' \
+            --dir .
+          tar -xzf release-*.tar.gz -C package
+
+      # Before anything is deployed: prove the payload is what was built and
+      # attested. SHA256SUMS covers site/ and sbom/.
+      - name: Verify the package digests
+        working-directory: package
+        run: |
+          sha256sum -c SHA256SUMS
+          echo "--- manifest ---"
+          cat manifest.json
+
+      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.TEST_SUBSCRIPTION_ID }}
+
+      # Needs Microsoft.Web/staticSites/listSecrets/action on the app. Fetching
+      # it here means the token never exists outside this job.
+      - name: Fetch the deployment token
+        id: swa
+        env:
+          NAME: ${{ vars.TEST_STATIC_WEB_APP_NAME }}
+          GROUP: ${{ vars.TEST_RESOURCE_GROUP }}
+        run: |
+          token=$(az staticwebapp secrets list \
+            --name "$NAME" \
+            --resource-group "$GROUP" \
+            --query 'properties.apiKey' \
+            --output tsv)
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy the package
+        uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.swa.outputs.token }}
+          action: upload
+          # Already built. Oryx must not run: a rebuild here would discard the
+          # verified bytes and defeat the whole pipeline.
+          skip_app_build: true
+          skip_api_build: true
+          app_location: package/site
+          api_location: ""
+          output_location: ""
+          # Host configuration is infrastructure, not content, so it lives
+          # outside site/ and the environment picks its own.
+          config_file_location: package/host-config/test
+
+      - name: Smoke-test the deployed site
+        env:
+          HOSTNAME_UNDER_TEST: ${{ vars.TEST_HOSTNAME }}
+        run: |
+          url="https://${HOSTNAME_UNDER_TEST}/"
+          echo "GET $url"
+          headers=$(curl -fsS --retry 6 --retry-delay 10 --retry-all-errors -D - -o /dev/null "$url")
+          echo "$headers"
+
+          # The one header that must differ from production. Without it the
+          # staging host is indexable, and it serves production's canonical
+          # URLs, which is exactly the duplicate-content case to avoid.
+          echo "$headers" | grep -qi '^x-robots-tag:.*noindex' || {
+            echo "::error::X-Robots-Tag: noindex missing — the test host-config was not applied"
+            exit 1
+          }
+
+          # Canonical still points at production, because the bytes are
+          # production's. Proves site/ was not rewritten per environment.
+          curl -fsS "$url" | grep -q 'rel="canonical" href="https://adrianpadilla.net' || {
+            echo "::error::canonical URL is not production's — site/ is not environment-neutral"
+            exit 1
+          }
+
+      # Asserts the leak described at the top of this file has not returned.
+      - name: Assert no staging environments were created
+        env:
+          NAME: ${{ vars.TEST_STATIC_WEB_APP_NAME }}
+          GROUP: ${{ vars.TEST_RESOURCE_GROUP }}
+        run: |
+          extra=$(az staticwebapp environment list \
+            --name "$NAME" \
+            --resource-group "$GROUP" \
+            --query "[?buildId!='default'].buildId" \
+            --output tsv)
+          if [ -n "$extra" ]; then
+            echo "::error::unexpected Static Web Apps staging environments: $extra"
+            echo 'Delete them with: az staticwebapp environment delete --name <app> --environment-name <id>'
+            exit 1
+          fi
+          echo "no staging environments — production slot only"
