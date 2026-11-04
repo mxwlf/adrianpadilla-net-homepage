@@ -44,7 +44,12 @@ jobs:
 
       - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
         with:
-          tofu_version: 1.13.5
+          # There is no v1.13.5 OpenTofu *release* — the published tags jump
+          # from v1.13.2 to v1.13.8, and setup-opentofu resolves against
+          # releases, so asking for 1.13.5 fails with "No matching version
+          # found". Homebrew happens to label its build 1.13.5, which is how the
+          # wrong number got here.
+          tofu_version: 1.13.8
           # The wrapper rewrites stdout to collect it for later steps, which
           # mangles `tofu fmt -diff` output. Nothing here needs it.
           tofu_wrapper: false
