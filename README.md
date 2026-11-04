@@ -135,15 +135,15 @@ See `docs/hosting-setup.md` for full setup instructions.
 
 All workflows run via GitHub Actions:
 
-| Workflow         | Trigger            | Purpose                                         | Blocks merge |
-| ---------------- | ------------------ | ----------------------------------------------- | ------------ |
-| `ci.yml`         | PR, push to `main` | `make ci` — hooks + lint + build + test         | yes (`ci`)   |
-| `lighthouse.yml` | PR, push to `main` | Lighthouse budgets (perf ≥0.90, a11y/SEO ≥0.95) | yes          |
-| `security.yml`   | PR, push, weekly   | CodeQL SAST, OSV-Scanner, dependency review     | partly¹      |
-| `secrets.yml`    | PR, push, weekly   | Gitleaks secret scanning                        | yes          |
-| `linkcheck.yml`  | PR, weekly         | Broken link detection                           | no²          |
-| `deploy.yml`     | Push to `main`     | Deploy to GitHub Pages                          | n/a          |
-| `monitor.yml`    | Weekly             | Production Lighthouse + security header checks  | n/a          |
+| Workflow                      | Trigger            | Purpose                                         | Blocks merge |
+| ----------------------------- | ------------------ | ----------------------------------------------- | ------------ |
+| `ci.yml`                      | PR, push to `main` | `make ci` — hooks + lint + build + test         | yes (`ci`)   |
+| `lighthouse.yml`              | PR, push to `main` | Lighthouse budgets (perf ≥0.90, a11y/SEO ≥0.95) | yes          |
+| `security.yml`                | PR, push, weekly   | CodeQL SAST, OSV-Scanner, dependency review     | partly¹      |
+| `secrets.yml`                 | PR, push, weekly   | Gitleaks secret scanning                        | yes          |
+| `linkcheck.yml`               | PR, weekly         | Broken link detection                           | no²          |
+| `azure-static-web-apps-*.yml` | Push to `main`     | Deploy to Azure Static Web Apps                 | n/a          |
+| `monitor.yml`                 | Weekly             | Production Lighthouse + security header checks  | n/a          |
 
 ¹ `dependency-review` and `osv-scan` block; `codeql` does not, because its own
 `if:` excludes pull requests. ² Lychee resolves external URLs, so it fails on

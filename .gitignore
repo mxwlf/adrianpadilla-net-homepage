@@ -369,7 +369,9 @@ Makefile.in
 
 ## Terraform
 .terraform/
-.terraform.lock.hcl
+# The provider lock file is committed on purpose: it is what makes `tofu init`
+# resolve the same provider builds for every clone and every CI run.
+!.terraform.lock.hcl
 terraform.tfstate
 terraform.tfstate.backup
 *.tfvars

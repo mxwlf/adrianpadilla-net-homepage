@@ -2,6 +2,9 @@
   "name": "static-template",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "eleventy --serve",
     "build": "eleventy",
