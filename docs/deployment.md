@@ -40,7 +40,10 @@ does. See [`.github/rulesets/README.md`](../.github/rulesets/README.md).
    the next version, `CHANGELOG.md` and `version.txt`. Review and merge it.
 3. Merging it tags the commit and publishes a GitHub Release.
 4. `release.yml` builds the package from that tag, attaches it to the Release
-   with a provenance attestation, and the test environment deploys it.
+   with a provenance attestation, and then -- in a second job that `needs:` the
+   first -- deploys it to the test environment. The two are one workflow on
+   purpose: as separate workflows both fired on `release: published` and the
+   deploy raced the build whose asset it downloads.
 
 Verify an artifact came from this pipeline:
 
@@ -180,48 +183,63 @@ Deployments authenticate to Azure by **workload identity federation**: GitHub
 mints a short-lived OIDC token, Azure trusts it for a specific subject, and no
 client secret or storage key exists anywhere.
 
-Create the app registration and trust the two environments:
+**One app registration per environment.** This matters, and the obvious shortcut
+is wrong: a federated credential's `subject` claim gates only the **token
+exchange**. Once exchanged, the access token belongs to the service principal,
+whose RBAC is the same no matter which credential matched. A single app trusted
+for both `environment:test` and `environment:production`, holding `Contributor`
+on both resource groups, would let the `test` job — which needs **no approval**
+— read production's deployment token and deploy to the live site. The approval
+gate would be decorative.
+
+So: two apps, each trusted for exactly one environment and granted rights in
+exactly one subscription.
 
 ```sh
 TENANT=6dbf3e28-8c7c-41fe-b397-a347b389a329
 REPO=mxwlf/adrianpadilla-net-homepage
 
-APP_ID=$(az ad app create --display-name github-adrianpadilla-net-homepage \
-  --query appId --output tsv)
-az ad sp create --id "$APP_ID"
+# $1 = environment name, $2 = subscription guid, $3 = resource group
+make_identity() {
+  app_id=$(az ad app create --display-name "github-apnh-$1" \
+    --query appId --output tsv)
+  az ad sp create --id "$app_id" >/dev/null
 
-for env in test production; do
-  az ad app federated-credential create --id "$APP_ID" --parameters "{
-    \"name\": \"github-env-${env}\",
+  az ad app federated-credential create --id "$app_id" --parameters "{
+    \"name\": \"github-env-$1\",
     \"issuer\": \"https://token.actions.githubusercontent.com\",
-    \"subject\": \"repo:${REPO}:environment:${env}\",
+    \"subject\": \"repo:${REPO}:environment:$1\",
     \"audiences\": [\"api://AzureADTokenExchange\"]
-  }"
-done
+  }" >/dev/null
+
+  sp_id=$(az ad sp show --id "$app_id" --query id --output tsv)
+
+  # Manage that environment's Static Web App and read its deployment token.
+  # Nothing outside this one resource group, and no DNS role anywhere.
+  az role assignment create --assignee-object-id "$sp_id" \
+    --assignee-principal-type ServicePrincipal --role Contributor \
+    --scope "/subscriptions/$2/resourceGroups/$3" >/dev/null
+
+  echo "$1: app=$app_id sp=$sp_id"
+}
+
+make_identity test       '<test subscription guid>'                '<test resource group>'
+make_identity production '0af99616-1635-473a-8cbb-9ceb60f73388'    'adrianpadilla-net-homepage_group'
 ```
 
-The subject is **environment-scoped**, which is the control that matters: a job
-declaring `environment: test` receives a token whose subject is
-`…:environment:test`, so it cannot obtain credentials for production. Production
-credentials are reachable only from a job that declared `environment: production`
-— and that job cannot start until the required reviewer approves it.
+The two client ids are published as separate variables
+(`TEST_AZURE_CLIENT_ID`, `PROD_AZURE_CLIENT_ID`), so the separation is visible in
+the workflow rather than resting on a claim in this document.
 
-Grant the service principal what it needs, and nothing else:
+What the environment approval actually buys you, stated precisely: it prevents a
+job from **running** in the `production` environment without a human, and only a
+job running there can exchange a token for the production principal. The
+isolation comes from the disjoint RBAC above; the approval is what stops the
+exchange happening at all.
 
-```sh
-SP_ID=$(az ad sp show --id "$APP_ID" --query id --output tsv)
-TEST_SUB=<test subscription guid>
-GROUP=<test resource group>
-
-# Manage the Static Web App and read its deployment token.
-az role assignment create --assignee-object-id "$SP_ID" \
-  --assignee-principal-type ServicePrincipal --role Contributor \
-  --scope "/subscriptions/${TEST_SUB}/resourceGroups/${GROUP}"
-```
-
-No DNS role, in any subscription — see the test environment section above for
-why. For OpenTofu state, pass `CI_PRINCIPAL_ID="$SP_ID"` to `make tf-bootstrap`,
-which scopes `Storage Blob Data Contributor` to the state container alone.
+For OpenTofu state, pass the **test** principal's object id as
+`CI_PRINCIPAL_ID` to `make tf-bootstrap`, which scopes
+`Storage Blob Data Contributor` to the state container alone.
 
 ### Repository variables
 
@@ -229,7 +247,8 @@ Set once, after `make tf-apply` (the values come from `tofu output`):
 
 ```sh
 gh variable set AZURE_TENANT_ID           --body "$TENANT"
-gh variable set AZURE_CLIENT_ID           --body "$APP_ID"
+gh variable set TEST_AZURE_CLIENT_ID    --body "<test app id>"
+gh variable set PROD_AZURE_CLIENT_ID    --body "<production app id>"
 gh variable set TEST_SUBSCRIPTION_ID      --body "$TEST_SUB"
 gh variable set TEST_RESOURCE_GROUP       --body "$(tofu -chdir=infra/test output -raw resource_group_name)"
 gh variable set TEST_STATIC_WEB_APP_NAME  --body "$(tofu -chdir=infra/test output -raw static_web_app_name)"
@@ -290,8 +309,15 @@ Add it through **Settings → Rules → main-protection → Bypass list**, then 
 `make rulesets-export` to bring the change back into the repository — otherwise
 the next `make rulesets-apply` silently reverts it.
 
-This genuinely weakens `main`: an identity gains the ability to write to it
-outside a pull request, which nothing could do before. An App rather than a
+This genuinely weakens `main`, in two ways rather than one. An identity gains
+the ability to write to it outside a pull request, which nothing could do
+before — and because ruleset bypass is per-ruleset rather than per-rule, that
+same entry also skips `required_signatures`. `required_signatures` checks every
+commit a push introduces, so the `record` merge brings release-please's unsigned
+commits onto `main` as ancestors; it succeeds by bypassing the rule, not by
+satisfying it. `main` is therefore not fully signed once this job is installed.
+What stays true is that **no human reaches `main` except through a reviewed pull
+request whose own commits are signed.** An App rather than a
 personal access token is the mitigation — scoped to this repository, visible in
 the audit log, and revocable in one click. If that trade is not worth it, drop
 the `record` job: the release tag and the Deployment record already state what

@@ -175,6 +175,26 @@ cmd_show() {
 	done
 }
 
+# Branch and tag policies live in their own collection, not on the environment,
+# so they have to be fetched and compared separately. Without this, deleting the
+# `v*` tag policy in the UI left `diff` reporting `ok`: the environment's
+# `deployment_branch_policy` block ({protected_branches, custom_branch_policies})
+# is unchanged by it, only the policy LIST changes. An environment that accepts
+# deployments from no ref at all would have looked clean.
+live_policies() {
+	gh api "repos/$REPO/environments/$1/deployment-branch-policies" \
+		--jq '.branch_policies[] | "\(.type // "branch")\t\(.name)"' 2>/dev/null |
+		LC_ALL=C sort || true
+}
+
+desired_policies() {
+	"$PYTHON" -c '
+import json, sys
+for p in json.load(open(sys.argv[1])).get("_branch_policies") or []:
+    sys.stdout.write(p.get("type", "branch") + "\t" + p["name"] + "\n")
+' "$1" | LC_ALL=C sort
+}
+
 cmd_diff() {
 	status=0
 	work=$(mktemp -d)
@@ -183,6 +203,7 @@ cmd_diff() {
 
 	for name in $(env_names); do
 		file="$ENV_DIR/$name.json"
+		ok=1
 
 		# A missing environment normalizes to {}, which diffs against the
 		# committed file and reports as drift rather than crashing.
@@ -192,7 +213,16 @@ cmd_diff() {
 		"$PYTHON" -c "$NORMALIZE_PY" <"$work/live.raw" >"$work/live"
 		desired_normalized "$file" >"$work/desired"
 
-		if diff -u --label "live: $name" "$work/live" --label "$file" "$work/desired"; then
+		diff -u --label "live: $name" "$work/live" \
+			--label "$file" "$work/desired" || ok=0
+
+		live_policies "$name" >"$work/live.pol"
+		desired_policies "$file" >"$work/desired.pol"
+
+		diff -u --label "live: $name policies" "$work/live.pol" \
+			--label "$file policies" "$work/desired.pol" || ok=0
+
+		if [ "$ok" -eq 1 ]; then
 			printf 'ok %s\n' "$name"
 		else
 			status=1
