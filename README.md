@@ -135,15 +135,15 @@ See `docs/hosting-setup.md` for full setup instructions.
 
 All workflows run via GitHub Actions:
 
-| Workflow                      | Trigger            | Purpose                                         | Blocks merge |
-| ----------------------------- | ------------------ | ----------------------------------------------- | ------------ |
-| `ci.yml`                      | PR, push to `main` | `make ci` — hooks + lint + build + test         | yes (`ci`)   |
-| `lighthouse.yml`              | PR, push to `main` | Lighthouse budgets (perf ≥0.90, a11y/SEO ≥0.95) | yes          |
-| `security.yml`                | PR, push, weekly   | CodeQL SAST, OSV-Scanner, dependency review     | partly¹      |
-| `secrets.yml`                 | PR, push, weekly   | Gitleaks secret scanning                        | yes          |
-| `linkcheck.yml`               | PR, weekly         | Broken link detection                           | no²          |
-| `azure-static-web-apps-*.yml` | Push to `main`     | Deploy to Azure Static Web Apps                 | n/a          |
-| `monitor.yml`                 | Weekly             | Production Lighthouse + security header checks  | n/a          |
+| Workflow                      | Trigger                      | Purpose                                         | Blocks merge |
+| ----------------------------- | ---------------------------- | ----------------------------------------------- | ------------ |
+| `ci.yml`                      | PR, push to `main`/`develop` | `make ci` — hooks + lint + build + test         | yes (`ci`)   |
+| `lighthouse.yml`              | PR, push to `main`/`develop` | Lighthouse budgets (perf ≥0.90, a11y/SEO ≥0.95) | yes          |
+| `security.yml`                | PR, push, weekly             | CodeQL SAST, OSV-Scanner, dependency review     | partly¹      |
+| `secrets.yml`                 | PR, push, weekly             | Gitleaks secret scanning                        | yes          |
+| `linkcheck.yml`               | PR, weekly                   | Broken link detection                           | no²          |
+| `azure-static-web-apps-*.yml` | Push to `main`               | Deploy to Azure Static Web Apps                 | n/a          |
+| `monitor.yml`                 | Weekly                       | Production Lighthouse + security header checks  | n/a          |
 
 ¹ `dependency-review` and `osv-scan` block; `codeql` does not, because its own
 `if:` excludes pull requests. ² Lychee resolves external URLs, so it fails on
@@ -182,24 +182,31 @@ enforce and why each required check was chosen.
 
 ### The workflow these rules require
 
-The workflow is **trunk-based**. `main` is the only long-lived branch; everything
-else is a short-lived branch that exists just long enough to carry one pull
-request, and is deleted after it merges.
+There are **two long-lived branches**. `develop` is where work lands; `main` is
+the record of what is deployed to production, and it is advanced only after a
+release has been promoted. Everything else is a short-lived branch that exists
+just long enough to carry one pull request, and is deleted after it merges.
 
-1. **Branch off `main`.** Name it however you like — the rules place no
+1. **Branch off `develop`.** Name it however you like — the rules place no
    constraint on source branches. Commits are checked locally by the hooks from
    `make setup`.
-2. **Open a pull request into `main`.** A direct `git push origin main` is
-   rejected by the ruleset, as is a force-push and a branch deletion.
+2. **Open a pull request into `develop`.** A direct `git push origin develop` is
+   rejected by the ruleset, as is a force-push and a branch deletion. The same
+   holds for `main`.
 3. **Let the required checks pass.** The merge button stays disabled until `ci`,
    `lighthouse`, `dependency-review`, `osv-scan` and `gitleaks` all report
-   success. The branch must also be up to date with `main` first, so if `main`
-   moved, update the branch and let them run again.
-4. **Merge with a merge commit, then delete the branch.** `main` accepts _only_
-   merge commits — squash and rebase are not offered. That choice is about
-   authorship: a merge commit leaves your commits untouched, so each keeps the
-   signature you made, and GitHub signs the merge commit itself to satisfy the
-   signed-commits rule. The trade is that `main` is not linear.
+   success. The branch must also be up to date with `develop` first, so if
+   `develop` moved, update the branch and let them run again.
+4. **Merge with a merge commit, then delete the branch.** Both protected branches
+   accept _only_ merge commits — squash and rebase are not offered. That choice is
+   about authorship: a merge commit leaves your commits untouched, so each keeps
+   the signature you made, and GitHub signs the merge commit itself to satisfy
+   `main`'s signed-commits rule. The trade is that history is not linear.
+
+`develop` does not require signed commits, because release-please's automated
+commits are unsigned; `main` does. That asymmetry, and why `develop` also omits
+the `creation` rule, are explained in
+[`.github/rulesets/README.md`](.github/rulesets/README.md).
 
 What this buys, and what it does not: the rules keep a red build from reaching
 `main` by accident. They are not a hard stop, because a repository admin can
