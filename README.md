@@ -50,6 +50,17 @@ Visit `http://localhost:8080`.
 before `make ci` will run, and it activates the commit hooks — see
 [Commit hygiene](#commit-hygiene).
 
+`make ci` also needs **OpenTofu**, which `make setup` does not install: the gate
+checks the formatting of `infra/` alongside everything else.
+
+```bash
+brew install opentofu   # or see https://opentofu.org/docs/intro/install/
+```
+
+Three toolchains in total, then: Node for the site, Python (via `.venv`) for the
+commit hooks, and OpenTofu for the infrastructure. `make ci` names whichever one
+is missing and how to get it.
+
 ## Commands
 
 | Command                | Purpose                                                       |
@@ -151,8 +162,7 @@ All workflows run via GitHub Actions:
 | `linkcheck.yml`      | PR, weekly                   | Broken link detection                           | no²          |
 | `infra.yml`          | PR, push (infra paths)       | `make tf-validate` — OpenTofu, no credentials   | no³          |
 | `release-please.yml` | Push to `develop`            | Version + changelog from Conventional Commits   | n/a          |
-| `release.yml`        | Release published            | Build and attest the one release package        | n/a          |
-| `deploy-test.yml`    | Release published            | Deploy the package to test.adrianpadilla.net    | n/a          |
+| `release.yml`        | Release published            | Build + attest the package, then deploy to test | n/a          |
 | `promote-prod.yml`   | Manual dispatch              | Promote a version to production, after approval | n/a          |
 | `monitor.yml`        | Weekly                       | Production Lighthouse + security header checks  | n/a          |
 

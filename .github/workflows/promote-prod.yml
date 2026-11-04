@@ -42,6 +42,24 @@ jobs:
     outputs:
       site-digest: ${{ steps.verify.outputs.site-digest }}
     steps:
+      # Checked before anything slow happens, and before the approval is spent:
+      # a leading "v" would otherwise produce `gh release download vv1.2.0` and
+      # fail with "release not found" only after a human had already approved.
+      - name: Validate the version input
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          case "$VERSION" in
+            v*)
+              echo "::error::drop the leading v — pass 1.2.0, not $VERSION"
+              exit 1
+              ;;
+          esac
+          printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$' || {
+            echo "::error::'$VERSION' is not a semantic version"
+            exit 1
+          }
+
       - name: Download the release package
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -56,9 +74,20 @@ jobs:
             --dir .
           tar -xzf "release-${VERSION}.tar.gz" -C package
 
-      # The gate before production. Verifies the payload against the digests
-      # published with it, and that the manifest describes the version asked
-      # for -- a mismatch means the assets were replaced after the build.
+      # The real gate before production, and it has to be the attestation rather
+      # than the digests: SHA256SUMS and manifest.json are Release assets too,
+      # so an identity able to replace the archive could replace all three and
+      # they would still agree with each other. Only the signed provenance ties
+      # the archive back to this repository's Release workflow.
+      - name: Verify the build provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh attestation verify "release-${VERSION}.tar.gz" \
+            --repo "${{ github.repository }}" \
+            --signer-workflow "${{ github.repository }}/.github/workflows/release.yml"
+
       - name: Verify the package
         id: verify
         working-directory: package
@@ -73,14 +102,22 @@ jobs:
             exit 1
           fi
 
+          # Constrained before it reaches $GITHUB_OUTPUT. `jq -r` emits raw
+          # newlines, so an unconstrained value could write extra lines and
+          # forge other job outputs.
           digest=$(jq -r .siteSha256 manifest.json)
+          printf '%s' "$digest" | grep -qE '^[0-9a-f]{64}$' || {
+            echo "::error::siteSha256 is not a sha256 digest"
+            exit 1
+          }
+
           echo "site-digest=${digest}" >> "$GITHUB_OUTPUT"
           echo "promoting ${VERSION}, site digest ${digest}"
           cat manifest.json >> "$GITHUB_STEP_SUMMARY"
 
       - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.PROD_AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.PROD_SUBSCRIPTION_ID }}
 
@@ -98,12 +135,19 @@ jobs:
           echo "::add-mask::$token"
           echo "token=$token" >> "$GITHUB_OUTPUT"
 
-      # production_branch is set explicitly. The action treats a deploy as a
-      # PREVIEW when it believes the current branch is not the production one,
-      # and this workflow runs on whatever ref it was dispatched from -- so
-      # leaving it unset is how a promotion could silently land in a staging
-      # slot instead of production. The Free plan has three such slots, and
-      # filling them previously broke every deploy on this app.
+      # production_branch is set to the ref this run was dispatched from, which
+      # makes it equal to the current branch by construction. That is
+      # deliberate, and it is an assertion rather than a comparison: the action
+      # treats a deploy as a PREVIEW when it believes the current branch is not
+      # the production one, so pinning the two together forces a production-slot
+      # deploy and removes the staging-slot path entirely. The Free plan has
+      # three such slots and filling them previously broke every deploy on this
+      # app.
+      #
+      # The flip side, since it can never evaluate false: if the production
+      # environment's branch policy is ever widened beyond `develop`, this will
+      # happily overwrite production from whatever branch was dispatched. The
+      # branch policy is the control here, not this input.
       - name: Deploy the package
         uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
         with:
@@ -170,28 +214,56 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       # main is the record of what is live, so it moves only after a successful
-      # promotion. The merge is created through the API, which means GitHub
-      # signs it and main's required_signatures rule is satisfied.
+      # promotion.
       #
       # This needs the app listed in main-protection.json's bypass_actors with
       # bypass_mode "always": main otherwise accepts only reviewed pull
       # requests, and that is deliberate. See .github/rulesets/README.md.
+      #
+      # Note what the bypass means for signatures, because it is easy to get
+      # wrong: GitHub does sign the merge commit it creates here, but
+      # required_signatures checks every commit a push introduces, and this
+      # merge brings release-please's unsigned commits onto main as ancestors.
+      # It succeeds because the bypass skips required_signatures along with the
+      # rest of the ruleset -- not because everything it carries is signed. So
+      # main is not "fully signed" once this job is installed; what stays true
+      # is that no HUMAN can reach main except through a reviewed pull request
+      # whose commits are signed. If you want the stronger property, drop this
+      # job: the release tag and the Deployment record already state what is
+      # live. docs/deployment.md covers that trade.
       - name: Advance main to the promoted commit
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ inputs.version }}
         run: |
-          if gh api --method POST "repos/${GH_REPO}/merges" \
+          # Distinguished by status code, not by the body. A no-op merge returns
+          # 204 with an EMPTY body, so matching on text like "Already merged"
+          # can never fire -- and 204 is a success, so the happy-path branch
+          # would have claimed main advanced when nothing happened. Promoting an
+          # older version for a rollback takes that path every time, since its
+          # tag is already an ancestor of main.
+          code=$(gh api --method POST "repos/${GH_REPO}/merges" \
             -f base=main \
             -f head="v${VERSION}" \
-            -f commit_message="chore: record v${VERSION} in production" > /tmp/merge.json; then
-            echo "main advanced to v${VERSION}"
-          elif grep -q 'Already merged' /tmp/merge.json 2>/dev/null; then
-            echo "main already contains v${VERSION} — nothing to record"
-          else
-            cat /tmp/merge.json
-            echo "::error::could not advance main. If this is a 403, the app is not a bypass actor on main-protection."
-            echo 'Add it, then run `make rulesets-export` to bring the change back into the repo.'
-            exit 1
-          fi
+            -f commit_message="chore: record v${VERSION} in production" \
+            --include --silent 2>/dev/null |
+            sed -n '1s#.* \([0-9][0-9][0-9]\).*#\1#p') || true
+
+          case "$code" in
+            201)
+              echo "main advanced to v${VERSION}"
+              ;;
+            204)
+              echo "main already contains v${VERSION} — nothing to record"
+              ;;
+            403)
+              echo "::error::main refused the merge (403). The release App is not a bypass actor on main-protection."
+              echo 'Add it with bypass_mode "always", then run `make rulesets-export`. See docs/deployment.md.'
+              exit 1
+              ;;
+            *)
+              echo "::error::could not advance main (HTTP ${code:-unknown})."
+              exit 1
+              ;;
+          esac
