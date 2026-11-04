@@ -156,6 +156,11 @@ RELEASE_VERSION ?=
 RELEASE_COMMIT ?= $(shell git rev-parse HEAD)
 
 reports: build ## Re-run every gate in report-producing mode into reports/
+	# Emptied first: lhci writes a timestamped filename per run and never
+	# overwrites, so without this a second `make package` ships both runs'
+	# Lighthouse reports and the package's evidence becomes an accumulation
+	# rather than a description of this build.
+	rm -rf reports
 	@mkdir -p reports/html-validate reports/playwright reports/a11y reports/lighthouse
 	npm run --silent report:html > reports/html-validate/report.json
 	PLAYWRIGHT_JSON_OUTPUT_NAME=$(CURDIR)/reports/playwright/report.json npm run --silent report:e2e
