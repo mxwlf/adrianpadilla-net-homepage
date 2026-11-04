@@ -59,6 +59,16 @@ jobs:
         with:
           python-version: "3.14"
 
+      # Third toolchain: `make ci` runs `tf-fmt-check` over infra/test/, so the
+      # gate needs the tofu binary. This is prerequisite installation, which is
+      # one of the few things that belongs in this file — the check itself lives
+      # in the Makefile. Only formatting is checked here; `tofu validate` needs
+      # to download providers and so runs in infra.yml instead.
+      - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: 1.13.8
+          tofu_wrapper: false
+
       # Cache pre-commit hook environments keyed on the config so unchanged
       # hooks are not rebuilt on every run.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
