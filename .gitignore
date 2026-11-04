@@ -178,6 +178,11 @@ lerna-debug.log*
 dist/
 build/
 out/
+# Release packaging outputs (`make reports`, `make sbom`, `make package`). The
+# package is a build product published as a GitHub Release asset, never committed.
+release/
+reports/
+sbom/
 .output/
 .nuxt/
 .next/

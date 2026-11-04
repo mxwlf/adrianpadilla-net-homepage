@@ -4,6 +4,11 @@ node_modules/
 .lighthouseci/
 .venv/
 
+# Release-packaging output: a copy of dist/, plus generated SBOM and reports.
+release/
+reports/
+sbom/
+
 # Branch protection as code. These files are written by `make rulesets-export`
 # straight from the GitHub API, in the canonical form scripts/github-rulesets.sh
 # normalizes to (2-space indent, sorted keys, one array element per line).

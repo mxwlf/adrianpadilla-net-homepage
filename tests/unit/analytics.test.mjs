@@ -61,6 +61,14 @@ describe("analytics bootstrap", () => {
     assert.deepEqual(bootstrap({ host: "wonderful-sky-0f46c841e.azurestaticapps.net" }), []);
   });
 
+  // The test environment serves the production bytes unchanged, this file
+  // included, so the host gate is the only thing keeping staging traffic out of
+  // the property. Deploying one verified package to both environments depends
+  // on that staying true.
+  it("measures nothing on the test environment, which serves identical bytes", () => {
+    assert.deepEqual(bootstrap({ host: "test.adrianpadilla.net" }), []);
+  });
+
   it("measures nothing under browser automation, even on the production host", () => {
     assert.deepEqual(bootstrap({ webdriver: true }), []);
   });
