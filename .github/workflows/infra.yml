@@ -1,0 +1,59 @@
+# ---------------------------------------------------------------------------
+# Infrastructure validation — OpenTofu, no credentials
+# ---------------------------------------------------------------------------
+# `make tf-validate` downloads the azurerm provider, which is a few hundred
+# megabytes. That is why it is not part of `make ci`: paying it on every laptop
+# before every push would make the gate too expensive to actually run. It gets
+# its own job instead, with the plugin directory cached.
+#
+# This job needs NO Azure credentials. `tofu init -backend=false` skips the
+# backend entirely, and `validate` only type-checks the configuration. Nothing
+# here can read or change the test environment — `tf-plan` and `tf-apply` are
+# run deliberately, by a person, and are not part of any gate.
+#
+# `tf-fmt-check` is in `make ci` rather than here: it parses the HCL without
+# needing a provider, so malformed configuration is caught by the main gate.
+
+name: Infrastructure
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra.yml"
+      - "Makefile"
+  push:
+    branches: [main, develop]
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra.yml"
+      - "Makefile"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  infra:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: 1.13.5
+          # The wrapper rewrites stdout to collect it for later steps, which
+          # mangles `tofu fmt -diff` output. Nothing here needs it.
+          tofu_wrapper: false
+
+      - name: Cache the provider plugins
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: infra/test/.terraform
+          key: tofu-${{ runner.os }}-${{ hashFiles('infra/test/.terraform.lock.hcl') }}
+          restore-keys: tofu-${{ runner.os }}-
+
+      - run: make tf-validate

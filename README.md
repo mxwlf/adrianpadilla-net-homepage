@@ -62,8 +62,15 @@ before `make ci` will run, and it activates the commit hooks — see
 | `make test`            | Run unit + e2e tests                                          |
 | `make a11y`            | axe-core accessibility audit                                  |
 | `make lighthouse`      | Lighthouse CI budget check                                    |
-| `make ci`              | Full gate: hooks + lint + build + test (same as CI)           |
-| `make clean`           | Remove `dist/`, caches, and test artifacts                    |
+| `make ci`              | Full gate: hooks + lint + infra format + build + test         |
+| `make package`         | Assemble the versioned release package (`RELEASE_VERSION=…`)  |
+| `make reports`         | Re-run every gate in report-producing mode into `reports/`    |
+| `make sbom`            | Write a CycloneDX SBOM to `sbom/`                             |
+| `make tf-validate`     | Download providers and validate `infra/` (no credentials)     |
+| `make tf-plan`         | Show what would change in the test environment                |
+| `make tf-apply`        | Apply the test environment                                    |
+| `make tf-bootstrap`    | One-time: create the Blob Storage holding OpenTofu state      |
+| `make clean`           | Remove `dist/`, caches, and test and release artifacts        |
 | `make clean-venv`      | Remove `.venv` (rebuild with `make setup`)                    |
 | `make rulesets-apply`  | Create/update this repo's branch protection on GitHub         |
 | `make rulesets-diff`   | Report drift between `.github/rulesets/` and GitHub           |
@@ -142,12 +149,17 @@ All workflows run via GitHub Actions:
 | `security.yml`                | PR, push, weekly             | CodeQL SAST, OSV-Scanner, dependency review     | partly¹      |
 | `secrets.yml`                 | PR, push, weekly             | Gitleaks secret scanning                        | yes          |
 | `linkcheck.yml`               | PR, weekly                   | Broken link detection                           | no²          |
+| `infra.yml`                   | PR, push (infra paths)       | `make tf-validate` — OpenTofu, no credentials   | no³          |
+| `release-please.yml`          | Push to `develop`            | Version + changelog from Conventional Commits   | n/a          |
+| `release.yml`                 | Release published            | Build and attest the one release package        | n/a          |
 | `azure-static-web-apps-*.yml` | Push to `main`               | Deploy to Azure Static Web Apps                 | n/a          |
 | `monitor.yml`                 | Weekly                       | Production Lighthouse + security header checks  | n/a          |
 
 ¹ `dependency-review` and `osv-scan` block; `codeql` does not, because its own
 `if:` excludes pull requests. ² Lychee resolves external URLs, so it fails on
-other people's outages. Both exclusions are explained in
+other people's outages. ³ `infra` only runs when `infra/**` changes, and a
+required check that does not run on every pull request would block every other
+one forever. Both exclusions are explained in
 [`.github/rulesets/README.md`](.github/rulesets/README.md).
 
 `ci.yml` is a **thin wrapper**: it checks out the code, installs Node and
