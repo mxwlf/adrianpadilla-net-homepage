@@ -1,20 +1,32 @@
 #!/usr/bin/env bash
 #
-# Creates the Blob Storage that holds the test environment's OpenTofu state.
+# Creates the Blob Storage that holds one environment's OpenTofu state.
 #
 # This is the one piece of infrastructure OpenTofu cannot create, because it is
 # where OpenTofu keeps its state: the backend has to exist before the first
-# `tofu init`. Everything else in the test environment is in infra/test/.
+# `tofu init`. Everything else in an environment is in infra/<env>/.
 #
 # Idempotent — safe to re-run. It creates what is missing, leaves what exists,
-# and rewrites infra/test/backend.config either way.
+# and rewrites infra/<env>/backend.config either way.
+#
+# EVERY environment-specific value is derived from INFRA_ENV, and that is the
+# point. An earlier version hardcoded both `infra/test/backend.config` and the
+# state key `test.tfstate`, so bootstrapping prod silently overwrote the test
+# environment's backend config with prod's values and aimed prod's state at
+# test's blob. Nothing failed; it exited 0. Hence the existence check below:
+# a typo in INFRA_ENV now stops the script instead of inventing a directory.
 #
 # Usage:
-#   SUBSCRIPTION_ID=<guid> RESOURCE_GROUP=<name> ./scripts/tf-bootstrap.sh
+#   SUBSCRIPTION_ID=<guid> RESOURCE_GROUP=<name> [INFRA_ENV=test] \
+#     ./scripts/tf-bootstrap.sh
 #
 # Optional:
-#   STORAGE_ACCOUNT   default apnhtfstate (3-24 chars, lowercase alphanumeric,
-#                     globally unique across Azure)
+#   INFRA_ENV         default test. Must name an existing infra/<env>/
+#                     directory, and selects both the backend.config written
+#                     and the state key inside the container.
+#   STORAGE_ACCOUNT   default apnhtfstate for test, apnhtfstateprod for prod
+#                     (3-24 chars, lowercase alphanumeric, globally unique
+#                     across Azure)
 #   CONTAINER         default tfstate
 #   LOCATION          default westus2
 #   CI_PRINCIPAL_ID   object id of the workload-identity service principal, to
@@ -22,7 +34,7 @@
 
 set -euo pipefail
 
-STORAGE_ACCOUNT="${STORAGE_ACCOUNT:-apnhtfstate}"
+INFRA_ENV="${INFRA_ENV:-test}"
 CONTAINER="${CONTAINER:-tfstate}"
 LOCATION="${LOCATION:-westus2}"
 
@@ -31,12 +43,59 @@ die() {
   exit 1
 }
 
-[[ -n "${SUBSCRIPTION_ID:-}" ]] || die 'SUBSCRIPTION_ID is required (the test subscription).'
+[[ -n "${SUBSCRIPTION_ID:-}" ]] || die 'SUBSCRIPTION_ID is required.'
 [[ -n "${RESOURCE_GROUP:-}" ]] || die 'RESOURCE_GROUP is required (must already exist).'
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+INFRA_DIR="${REPO_ROOT}/infra/${INFRA_ENV}"
+
+[[ -d "$INFRA_DIR" ]] ||
+  die "INFRA_ENV='${INFRA_ENV}' has no infra/${INFRA_ENV}/ directory. Existing environments: $(cd "${REPO_ROOT}/infra" && echo */ | tr -d /)."
+
+# Defaulted per environment rather than globally, so forgetting to pass it
+# cannot point one environment's backend at another's account.
+if [[ -z "${STORAGE_ACCOUNT:-}" ]]; then
+  case "$INFRA_ENV" in
+    test) STORAGE_ACCOUNT='apnhtfstate' ;;
+    prod) STORAGE_ACCOUNT='apnhtfstateprod' ;;
+    *) die "no default STORAGE_ACCOUNT for INFRA_ENV='${INFRA_ENV}'; pass one explicitly." ;;
+  esac
+fi
 
 command -v az >/dev/null 2>&1 || die 'the Azure CLI (az) is required.'
 
+echo "==> Environment $INFRA_ENV"
 echo "==> Subscription $SUBSCRIPTION_ID, resource group $RESOURCE_GROUP"
+
+# ---------------------------------------------------------------------------
+# Tenant check
+# ---------------------------------------------------------------------------
+# `az account show --subscription X` works for any subscription az holds a
+# token for, across tenants -- but every `az ad` command below runs against the
+# ACTIVE tenant, not the target subscription's. With two accounts logged in,
+# that mismatch is invisible and total: the script read the wrong directory's
+# signed-in user, tried to grant that foreign object id here, and the grant
+# failed into a message saying it was probably already assigned. The state
+# storage came out with no data-plane role on it whatsoever.
+
+TARGET_TENANT="$(az account show --subscription "$SUBSCRIPTION_ID" --query tenantId --output tsv 2>/dev/null)" ||
+  die "cannot read subscription '$SUBSCRIPTION_ID'. Run: az login"
+ACTIVE_TENANT="$(az account show --query tenantId --output tsv 2>/dev/null)" ||
+  die 'no active az context. Run: az login'
+
+if [[ "$TARGET_TENANT" != "$ACTIVE_TENANT" ]]; then
+  die "$(
+    cat <<MSG
+the active az context is in tenant $ACTIVE_TENANT, but subscription
+       $SUBSCRIPTION_ID belongs to tenant $TARGET_TENANT.
+
+       Directory lookups (az ad ...) would resolve against the wrong tenant and
+       the role grants would silently do nothing. Point az at the right one:
+
+           az account set --subscription $SUBSCRIPTION_ID
+MSG
+  )"
+fi
 
 az group show \
   --subscription "$SUBSCRIPTION_ID" \
@@ -94,16 +153,29 @@ az storage account blob-service-properties update \
 ACCOUNT_SCOPE="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Storage/storageAccounts/${STORAGE_ACCOUNT}"
 CONTAINER_SCOPE="${ACCOUNT_SCOPE}/blobServices/default/containers/${CONTAINER}"
 
+# An existing assignment is the only tolerated failure, and it is recognised by
+# name rather than assumed. Everything else aborts: a swallowed grant failure
+# here produces state storage nobody can read, which only surfaces much later
+# as an opaque permission error from `tofu init`.
 grant() {
-  local principal="$1" scope="$2" label="$3"
+  local principal="$1" scope="$2" label="$3" type="$4" output
   echo "==> Granting Storage Blob Data Contributor to $label"
-  az role assignment create \
-    --assignee-object-id "$principal" \
-    --assignee-principal-type "$4" \
-    --role 'Storage Blob Data Contributor' \
-    --scope "$scope" \
-    --output none 2>/dev/null ||
-    echo "    (already assigned, or you lack rights to assign it)"
+
+  if output="$(
+    az role assignment create \
+      --assignee-object-id "$principal" \
+      --assignee-principal-type "$type" \
+      --role 'Storage Blob Data Contributor' \
+      --scope "$scope" \
+      --output none 2>&1
+  )"; then
+    echo '    granted'
+  elif grep -qiE 'RoleAssignmentExists|already exists' <<<"$output"; then
+    echo '    already assigned'
+  else
+    echo "$output" >&2
+    die "could not grant Storage Blob Data Contributor to $label ($principal). Without it nothing can read this state."
+  fi
 }
 
 ME="$(az ad signed-in-user show --query id --output tsv)"
@@ -144,16 +216,16 @@ done
 # with -backend-config. Git-ignored: it names the account, which is not secret
 # but is environment-specific.
 
-BACKEND_CONFIG="$(dirname "$0")/../infra/test/backend.config"
+BACKEND_CONFIG="${INFRA_DIR}/backend.config"
 cat >"$BACKEND_CONFIG" <<EOF
 resource_group_name  = "${RESOURCE_GROUP}"
 storage_account_name = "${STORAGE_ACCOUNT}"
 container_name       = "${CONTAINER}"
-key                  = "test.tfstate"
+key                  = "${INFRA_ENV}.tfstate"
 subscription_id      = "${SUBSCRIPTION_ID}"
 EOF
 
 echo
-echo "==> Wrote $(cd "$(dirname "$BACKEND_CONFIG")" && pwd)/backend.config"
-echo "==> Next: cp infra/test/terraform.tfvars.example infra/test/terraform.tfvars"
-echo "          then fill it in and run \`make tf-plan\`"
+echo "==> Wrote ${BACKEND_CONFIG}"
+echo "==> Next: cp infra/${INFRA_ENV}/terraform.tfvars.example infra/${INFRA_ENV}/terraform.tfvars"
+echo "          then fill it in and run \`make tf-plan INFRA_ENV=${INFRA_ENV}\`"

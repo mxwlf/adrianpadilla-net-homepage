@@ -8,8 +8,11 @@
 #
 # This job needs NO Azure credentials. `tofu init -backend=false` skips the
 # backend entirely, and `validate` only type-checks the configuration. Nothing
-# here can read or change the test environment — `tf-plan` and `tf-apply` are
+# here can read or change either environment — `tf-plan` and `tf-apply` are
 # run deliberately, by a person, and are not part of any gate.
+#
+# `make tf-validate` loops over every infra/*/ directory, so adding an
+# environment needs no change here.
 #
 # `tf-fmt-check` is in `make ci` rather than here: it parses the HCL without
 # needing a provider, so malformed configuration is caught by the main gate.
@@ -57,8 +60,11 @@ jobs:
       - name: Cache the provider plugins
         uses: actions/cache@v6.1.0
         with:
-          path: infra/test/.terraform
-          key: tofu-${{ runner.os }}-${{ hashFiles('infra/test/.terraform.lock.hcl') }}
+          # Globbed over environments rather than naming one, so a new
+          # infra/<env>/ is cached without editing this file. Both environments
+          # pin the same provider version, so they share a key.
+          path: infra/*/.terraform
+          key: tofu-${{ runner.os }}-${{ hashFiles('infra/*/.terraform.lock.hcl') }}
           restore-keys: tofu-${{ runner.os }}-
 
       - run: make tf-validate

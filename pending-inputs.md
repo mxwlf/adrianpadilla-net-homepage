@@ -64,10 +64,11 @@ and `actions-lock` reporting alongside.
 
 ## Resolved, for the record
 
-| Was                                                   | Resolution                                                                                                                                              |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Site identity placeholders                            | `src/_data/site.json` is filled in — real URL, title, description, author                                                                               |
-| Hosting provider (Pages / Netlify / Cloudflare / AWS) | **Azure Static Web Apps**, two environments. See [`docs/deployment.md`](docs/deployment.md)                                                             |
-| MCP server skeleton for an issue tracker              | `.mcp.json` carries Playwright; the issue-tracker placeholder is gone                                                                                   |
-| Node version pinned per workflow                      | `.nvmrc` is the single source, read by every `setup-node` step. Now Node 24                                                                             |
-| Domain and DNS                                        | `adrianpadilla.net` is live, zone in the `connectivity` subscription. `test.adrianpadilla.net` is covered in [`docs/deployment.md`](docs/deployment.md) |
+| Was                                                   | Resolution                                                                                                                                                                   |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Site identity placeholders                            | `src/_data/site.json` is filled in — real URL, title, description, author                                                                                                    |
+| Hosting provider (Pages / Netlify / Cloudflare / AWS) | **Azure Static Web Apps**, two environments. See [`docs/deployment.md`](docs/deployment.md)                                                                                  |
+| MCP server skeleton for an issue tracker              | `.mcp.json` carries Playwright; the issue-tracker placeholder is gone                                                                                                        |
+| Node version pinned per workflow                      | `.nvmrc` is the single source, read by every `setup-node` step. Now Node 24                                                                                                  |
+| Domain and DNS                                        | `adrianpadilla.net` is live, zone in the `connectivity` subscription. `test.adrianpadilla.net` is covered in [`docs/deployment.md`](docs/deployment.md)                      |
+| Production described only in the portal               | Rebuilt from scratch in `infra/prod/`, resource group renamed to `adrianpadilla-net-homepage-prod-rg`. Not imported — see [`docs/deployment.md`](docs/deployment.md) for why |

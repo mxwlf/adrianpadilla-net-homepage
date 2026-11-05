@@ -212,13 +212,24 @@ where OpenTofu keeps its state:
 ```sh
 SUBSCRIPTION_ID=<test subscription guid> \
 RESOURCE_GROUP=<the group from step 1> \
-make tf-bootstrap
+make tf-bootstrap INFRA_ENV=test
 ```
 
 The account is created with `--allow-shared-key-access false`, so the only way
 to reach the state is an Entra identity holding a data-plane role. There is no
 storage key to leak or rotate. The script grants your own identity, writes
-`infra/test/backend.config`, and enables blob versioning plus 30-day soft delete.
+`infra/<env>/backend.config`, and enables blob versioning plus 30-day soft delete.
+
+**Pass `INFRA_ENV`, and have the right subscription active.** Every
+environment-specific value — the `backend.config` written, the state key inside
+the container, the default storage account name — is derived from it. The script
+also refuses to run when your active `az` context is in a different tenant from
+the target subscription, which is not a theoretical guard: `az account show
+--subscription X` happily reads across tenants, but every `az ad` lookup resolves
+against the _active_ one. Bootstrapping production with a work account selected
+read that directory's signed-in user, tried to grant a foreign object id, and
+failed into a message saying the role was probably already assigned. The state
+storage came out with no data-plane role on it at all, and the script exited 0.
 
 **3. Variables.**
 
@@ -251,8 +262,159 @@ created.
 Delegating `test.adrianpadilla.net` as its own zone would avoid the manual step,
 and was rejected: it makes the hostname a zone apex, which forces Azure's
 `dns-txt-token` validation — documented as not waited on, so OpenTofu would
-report success without confirming — and a zone apex cannot hold a CNAME, while
-Azure DNS cannot point an ALIAS record at a Static Web App.
+report success without confirming — and a zone apex cannot hold a CNAME.
+
+An earlier version of this page also claimed Azure DNS cannot point an ALIAS
+record at a Static Web App. **That is wrong**, and the proof is in this zone:
+`adrianpadilla.net` itself is an ALIAS `A` record whose `targetResource` is the
+production Static Web App, which is exactly how the apex is served. The reason
+DNS stays out of OpenTofu is blast radius, not capability.
+
+### The production environment
+
+`infra/prod/` describes `adrianpadilla.net` and `www.adrianpadilla.net`, and is
+deliberately the same shape as `infra/test/`. Every target takes the
+environment, defaulting to `test`:
+
+```sh
+make tf-plan  INFRA_ENV=prod
+make tf-apply INFRA_ENV=prod
+```
+
+**Why production was rebuilt rather than imported.** The original production app
+was made by hand in the portal, and it stopped accepting token deploys: the
+content server answered `No matching Static Web App was found or the api key was
+invalid` to a freshly fetched key, in CI and from a laptop alike, while the
+OpenTofu-created test app accepted the identical command. Two rounds of
+diagnosis found no cause — only differences we could enumerate but not account
+for: a stale GitHub source-control link, no tags, an unset
+`publicNetworkAccess`. Importing would have carried whatever that was into the
+new state file, so the app was rebuilt from the configuration that demonstrably
+works. The replacement accepted the first deploy it was given.
+
+The resource group was renamed in the same move, from
+`adrianpadilla-net-homepage_group` to `adrianpadilla-net-homepage-prod-rg`, to
+match the test environment's naming.
+
+**What production adds over test.** One setting, and it has a scar behind it:
+
+```hcl
+preview_environments_enabled = false
+```
+
+The retired pull-based workflow's header recorded staging environments that
+Azure created from branch pushes and never tore down. They filled the Free
+plan's three environment slots and broke production deploys outright. Promotion
+always deploys `--env production`, so the ability to create a preview
+environment is pure downside here. See
+[Preview environments](#preview-environments-do-not-re-enable-them-casually).
+
+**What is not in `infra/prod/`.** No DNS, for the blast-radius reason above. And
+no apex custom domain binding: an apex must validate by `dns-txt-token`, which
+the provider documents as a path it does not wait on, so OpenTofu would mark it
+created without confirming. Only `cname-delegation` is polled, so `www` is
+managed here and the apex binding is made by hand, once.
+
+#### Runbook: moving the live domains to a new Static Web App
+
+A hostname can be bound to only one Static Web App at a time, so a cutover
+cannot be done with a single apply, and there is no zero-downtime path on the
+Free SKU. Budget a few minutes, and run it in this order.
+
+Lower both TTLs **first**. This does nothing for resolvers that have already
+cached the records — they hold the old value for up to the previous TTL, an hour
+in our case — but it makes the next cutover, and any correction you need in the
+following minutes, cheap:
+
+```sh
+DNS_SUB=42cb3155-85e5-4646-8110-a3aa3d02460d   # the connectivity subscription
+az network dns record-set a update     --subscription $DNS_SUB -g dns-prod \
+  -z adrianpadilla.net -n @   --set ttl=60
+az network dns record-set cname update --subscription $DNS_SUB -g dns-prod \
+  -z adrianpadilla.net -n www --set ttl=60
+```
+
+1. **Create the app only.** The `www` binding would fail on a first pass,
+   because the hostname is still held by the old app:
+
+   ```sh
+   make tf-apply INFRA_ENV=prod TF_ARGS='-target=azurerm_static_web_app.prod'
+   tofu -chdir=infra/prod output dns_records_to_create
+   ```
+
+2. **Deploy and verify on the Azure hostname, before touching DNS.** This is the
+   step that makes the cutover safe: if the new app cannot serve the release,
+   you find out while the live site is still untouched.
+
+   ```sh
+   gh release download v<version> --dir /tmp/cut/dl
+   gh attestation verify /tmp/cut/dl/release-<version>.tar.gz --owner mxwlf
+   tar -xzf /tmp/cut/dl/release-<version>.tar.gz -C /tmp/cut/package
+   ( cd /tmp/cut/package && shasum -a 256 -c SHA256SUMS )
+
+   TOKEN=$(az staticwebapp secrets list --subscription "$PROD_SUB" \
+     --resource-group adrianpadilla-net-homepage-prod-rg \
+     --name adrianpadilla-net-homepage-prod --query properties.apiKey -o tsv)
+
+   npx @azure/static-web-apps-cli deploy /tmp/cut/package/site \
+     --swa-config-location /tmp/cut/package/host-config/prod \
+     --deployment-token "$TOKEN" --env production
+   ```
+
+   Then check the `*.azurestaticapps.net` hostname it prints: 200, the expected
+   footer version, a canonical pointing at `adrianpadilla.net`, and **no**
+   `X-Robots-Tag` (that header belongs to test alone).
+
+3. **Release the hostnames from the old app.** Azure warns that this takes up to
+   15 minutes to propagate, and the new binding will be rejected until it has.
+   Wait for the old app to report zero custom domains rather than guessing:
+
+   ```sh
+   for d in adrianpadilla.net www.adrianpadilla.net; do
+     az staticwebapp hostname delete --name <old app> \
+       --resource-group <old rg> --hostname "$d" --yes --no-wait
+   done
+   ```
+
+4. **Repoint DNS.** The apex is an ALIAS `A` record targeting the Static Web App
+   _resource_; `www` is an ordinary CNAME to its Azure hostname:
+
+   ```sh
+   az network dns record-set a update --subscription $DNS_SUB -g dns-prod \
+     -z adrianpadilla.net -n @ --target-resource "$NEW_SWA_RESOURCE_ID"
+   az network dns record-set cname set-record --subscription $DNS_SUB -g dns-prod \
+     -z adrianpadilla.net -n www --cname "$NEW_DEFAULT_HOST_NAME"
+   ```
+
+5. **Bind the hostnames on the new app.** `www` through OpenTofu, the apex by
+   hand:
+
+   ```sh
+   make tf-apply INFRA_ENV=prod          # binds www by cname-delegation
+   az staticwebapp hostname set --name adrianpadilla-net-homepage-prod \
+     --resource-group adrianpadilla-net-homepage-prod-rg \
+     --hostname adrianpadilla.net
+   ```
+
+   Both end up with `validationMethod: None`, because the ALIAS and CNAME
+   records are themselves the proof of ownership — no TXT token is involved when
+   the zone is in Azure DNS.
+
+6. **Update the repository variables and the RBAC**, or the next promotion
+   deploys to the app you just retired:
+
+   ```sh
+   gh variable set PROD_RESOURCE_GROUP      --body 'adrianpadilla-net-homepage-prod-rg'
+   gh variable set PROD_STATIC_WEB_APP_NAME --body 'adrianpadilla-net-homepage-prod'
+   ```
+
+   The deploy identity needs `Contributor` on the new group. Leave its
+   assignment on the old group until the old app is deleted, then remove both
+   together.
+
+7. **Keep the old app for a few days.** It is the rollback: rebinding the
+   domains to it is the same procedure in reverse. Delete it, and its role
+   assignment, once the new one has proven itself.
 
 ### The deploy identity, with no stored credentials
 
@@ -327,7 +489,7 @@ make_identity() {
 }
 
 make_identity test       '<test subscription guid>'                '<test resource group>'
-make_identity production '0af99616-1635-473a-8cbb-9ceb60f73388'    'adrianpadilla-net-homepage_group'
+make_identity production '0af99616-1635-473a-8cbb-9ceb60f73388'    'adrianpadilla-net-homepage-prod-rg'
 ```
 
 The two client ids are published as separate variables
@@ -386,8 +548,8 @@ Production needs its own repository variables:
 
 ```sh
 gh variable set PROD_SUBSCRIPTION_ID     --body '0af99616-1635-473a-8cbb-9ceb60f73388'
-gh variable set PROD_RESOURCE_GROUP      --body 'adrianpadilla-net-homepage_group'
-gh variable set PROD_STATIC_WEB_APP_NAME --body 'adrianpadilla-net-homepage'
+gh variable set PROD_RESOURCE_GROUP      --body 'adrianpadilla-net-homepage-prod-rg'
+gh variable set PROD_STATIC_WEB_APP_NAME --body 'adrianpadilla-net-homepage-prod'
 ```
 
 The deploy identity also needs `Contributor` on that resource group, and a
