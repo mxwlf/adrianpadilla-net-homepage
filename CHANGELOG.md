@@ -4,6 +4,14 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.2.0](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.1.0...v1.2.0) (2026-11-05)
+
+
+### Features
+
+* describe production in OpenTofu and rebuild it from scratch ([8713514](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/8713514e468062ac8ab52c05dc59b136e4db98d0))
+* describe production in OpenTofu and rebuild it from scratch ([7a8ba42](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/7a8ba4277ee3f1731fa8c11a04a46ed1203a6f68))
+
 ## [1.1.0](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.0.1...v1.1.0) (2026-11-05)
 
 
