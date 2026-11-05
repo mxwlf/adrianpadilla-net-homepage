@@ -20,9 +20,26 @@ jobs:
           # Treating it as one made this job fail on whichever popular URL
           # happened to throttle that run. Real 4xx/5xx still fail the job.
           # Concurrency is lowered and retries added to provoke 429s less.
+          #
+          # This repository's own compare links are excluded, and only those.
+          # release-please writes CHANGELOG.md with a heading that compares the
+          # previous tag to the one being released:
+          #
+          #   ## [1.0.1](https://github.com/OWNER/REPO/compare/v1.0.0...v1.0.1)
+          #
+          # v1.0.1 does not exist while the release pull request is open -- the
+          # tag is created when it merges -- so that link is a guaranteed 404 on
+          # every release pull request, and resolves by itself the moment the
+          # release lands. A check that always fails on a predictable, harmless
+          # condition is a check people learn to ignore.
+          #
+          # Scoped to compare URLs on this repository on purpose: the commit
+          # links release-please writes alongside them point at commits that
+          # already exist, so they stay checked, as does every other link.
           args: >-
             --verbose --no-progress
             --accept 200..=299,429
             --max-concurrency 4
             --max-retries 3
+            --exclude github.com/mxwlf/adrianpadilla-net-homepage/compare/
             .
