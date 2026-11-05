@@ -57,13 +57,26 @@ updates:
         applies-to: security-updates
         patterns: ["*"]
 
-  # Action versions in .github/workflows/. These are pinned to commit SHAs with
-  # the version in a trailing comment; Dependabot understands that convention
-  # and updates both together.
+  # Action versions in .github/workflows/, pinned through
+  # .github/workflows/actions.lock. Dependabot updates the workflow reference
+  # and the matching lockfile entry in the same pull request, so the two cannot
+  # drift apart.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    # Let a fresh release settle before adopting it. `gh actions-lock` flagged
+    # this: generating the lockfile pinned a github/codeql-action tag that had
+    # been published nine hours earlier. The window right after a release is
+    # when a compromised upstream account does the most damage, and waiting a
+    # week costs nothing on a personal site.
+    #
+    # `default-days` is the only cooldown option github-actions supports --
+    # semver-major/minor/patch-days are npm and friends only. Cooldown applies
+    # to version updates only; security updates are never delayed by it, which
+    # is the behaviour you want.
+    cooldown:
+      default-days: 7
     groups:
       actions:
         applies-to: version-updates

@@ -115,7 +115,7 @@ jobs:
           echo "promoting ${VERSION}, site digest ${digest}"
           cat manifest.json >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+      - uses: azure/login@v3.1.0
         with:
           client-id: ${{ vars.PROD_AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -149,7 +149,7 @@ jobs:
       # happily overwrite production from whatever branch was dispatched. The
       # branch policy is the control here, not this input.
       - name: Deploy the package
-        uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
+        uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ steps.swa.outputs.token }}
           action: upload
@@ -208,7 +208,7 @@ jobs:
     steps:
       - name: Mint a short-lived app token
         id: app-token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@v3.3.0
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
