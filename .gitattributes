@@ -109,12 +109,23 @@ Dockerfile        text
 .gitattributes    text
 .gitconfig        text
 .htaccess         text
-*.lock            text -diff
+#
+# Lock files carry `-merge` as well as `-diff`. `-diff` only hides the noise;
+# `-merge` stops git trying to three-way merge them, which it cannot do safely.
+# A textual merge of two lock files produces a file that is structurally invalid
+# JSON while leaving no conflict markers behind, so nothing looks wrong until
+# `npm ci` fails with EUSAGE and the vulnerability scanner silently reports zero
+# packages. With `-merge`, git keeps the current branch's version and declares a
+# conflict instead, and the only correct resolution is to regenerate:
+#
+#     git checkout --ours package-lock.json && npm install
+#
+*.lock            text -diff -merge
 package.json      text eol=lf
-package-lock.json text eol=lf -diff
-pnpm-lock.yaml    text eol=lf -diff
+package-lock.json text eol=lf -diff -merge
+pnpm-lock.yaml    text eol=lf -diff -merge
 .prettierrc       text
-yarn.lock         text -diff
+yarn.lock         text -diff -merge
 *.toml            text
 *.yaml            text
 *.yml             text
