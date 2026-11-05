@@ -88,6 +88,12 @@
 }
 
 html {
+  /* The prefix is load-bearing, not legacy: iOS Safari implements only
+     -webkit-text-size-adjust, and without it rotating to landscape inflates
+     body text. The unprefixed property below covers every other engine, so
+     both have to be here. stylelint-config-standard 40 turned
+     property-no-vendor-prefix on, hence the exception. */
+  /* stylelint-disable-next-line property-no-vendor-prefix */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
