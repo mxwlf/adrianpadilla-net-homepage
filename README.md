@@ -24,14 +24,17 @@ src/
     ├── js/main.js           # Minimal JS placeholder
     └── vendor/              # Self-hosted third-party scripts (currently empty)
 
-scripts/                     # Post-build: sitemap generator, headers copy; ruleset management
+scripts/                     # Sitemap, release packaging, ruleset/environment/state management
 tests/
 ├── unit/                    # Node built-in test runner
 ├── e2e/                     # Playwright: navigation, no-JS fallback
 └── a11y/                    # Playwright + axe-core: zero a11y violations
-ops/headers/                 # HTTP security headers per hosting provider
+infra/test/                  # The test environment, in OpenTofu
+staticwebapp.config.json     # Response headers and cache rules, one source for both environments
 .github/workflows/           # CI/CD pipelines (see below)
+.github/workflows/actions.lock  # Every action pinned to a commit, incl. transitive
 .github/rulesets/            # Branch protection as code (see below)
+.github/environments/        # Deployment environments as code, incl. the production approval
 .githooks/                   # Committed git hooks, activated by `make setup`
 .claude/                     # Claude Code governance (rules, agents, skills, hooks)
 ```
@@ -61,33 +64,60 @@ Three toolchains in total, then: Node for the site, Python (via `.venv`) for the
 commit hooks, and OpenTofu for the infrastructure. `make ci` names whichever one
 is missing and how to get it.
 
+## Documentation
+
+| Document                                                               | Covers                                                                                  |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [`docs/getting-started.md`](docs/getting-started.md)                   | Building the site: templates, pages, assets, the local commands                         |
+| [`docs/deployment.md`](docs/deployment.md)                             | How a change reaches production — branches, releases, the approval gate, one-time setup |
+| [`docs/hosting-setup.md`](docs/hosting-setup.md)                       | Response headers, and how the per-environment variants are built                        |
+| [`docs/hardening-github-actions.md`](docs/hardening-github-actions.md) | The Actions supply-chain work, and how to apply it to another repository                |
+| [`.github/rulesets/README.md`](.github/rulesets/README.md)             | Branch protection as code, and the protections that live on the repo instead            |
+| [`pending-inputs.md`](pending-inputs.md)                               | What is still genuinely open                                                            |
+| [`.claude/CLAUDE.md`](.claude/CLAUDE.md)                               | The project's non-negotiables and architecture rules                                    |
+
 ## Commands
 
-| Command                | Purpose                                                       |
-| ---------------------- | ------------------------------------------------------------- |
-| `make setup`           | One-time: create `.venv` and activate the committed git hooks |
-| `make dev`             | Dev server with live reload                                   |
-| `make build`           | Build site + generate sitemap + validate HTML                 |
-| `make lint`            | Run the site's linters (Prettier, ESLint, Stylelint)          |
-| `make hooks`           | Run the pre-commit hooks against all files                    |
-| `make test`            | Run unit + e2e tests                                          |
-| `make a11y`            | axe-core accessibility audit                                  |
-| `make lighthouse`      | Lighthouse CI budget check                                    |
-| `make ci`              | Full gate: hooks + lint + infra format + build + test         |
-| `make package`         | Assemble the versioned release package (`RELEASE_VERSION=…`)  |
-| `make reports`         | Re-run every gate in report-producing mode into `reports/`    |
-| `make sbom`            | Write a CycloneDX SBOM to `sbom/`                             |
-| `make tf-validate`     | Download providers and validate `infra/` (no credentials)     |
-| `make tf-plan`         | Show what would change in the test environment                |
-| `make tf-apply`        | Apply the test environment                                    |
-| `make tf-bootstrap`    | One-time: create the Blob Storage holding OpenTofu state      |
-| `make clean`           | Remove `dist/`, caches, and test and release artifacts        |
-| `make clean-venv`      | Remove `.venv` (rebuild with `make setup`)                    |
-| `make rulesets-apply`  | Create/update this repo's branch protection on GitHub         |
-| `make rulesets-diff`   | Report drift between `.github/rulesets/` and GitHub           |
-| `make rulesets-export` | Pull GitHub's live branch protection back into the repo       |
+| Command                    | Purpose                                                         |
+| -------------------------- | --------------------------------------------------------------- |
+| `make setup`               | One-time: create `.venv` and activate the committed git hooks   |
+| `make dev`                 | Dev server with live reload                                     |
+| `make build`               | Build site + generate sitemap + validate HTML                   |
+| `make fmt`                 | Auto-format supported files (Prettier)                          |
+| `make lint`                | Run the site's linters (Prettier, ESLint, Stylelint)            |
+| `make hooks`               | Run the pre-commit hooks against all files                      |
+| `make test`                | Run unit + e2e tests                                            |
+| `make a11y`                | axe-core accessibility audit                                    |
+| `make lighthouse`          | Lighthouse CI budget check                                      |
+| `make ci`                  | Full gate: hooks + lint + infra format + build + test           |
+| `make package`             | Assemble the versioned release package (`RELEASE_VERSION=…`)    |
+| `make reports`             | Re-run every gate in report-producing mode into `reports/`      |
+| `make sbom`                | Write a CycloneDX SBOM to `sbom/`                               |
+| `make tf-fmt`              | Rewrite `infra/` into canonical OpenTofu formatting             |
+| `make tf-validate`         | Download providers and validate `infra/` (no credentials)       |
+| `make tf-plan`             | Show what would change in the test environment                  |
+| `make tf-apply`            | Apply the test environment                                      |
+| `make tf-bootstrap`        | One-time: create the Blob Storage holding OpenTofu state        |
+| `make clean`               | Remove `dist/`, caches, and test and release artifacts          |
+| `make clean-venv`          | Remove `.venv` (rebuild with `make setup`)                      |
+| `make rulesets-apply`      | Create/update this repo's branch protection on GitHub           |
+| `make rulesets-diff`       | Report drift between `.github/rulesets/` and GitHub             |
+| `make rulesets-export`     | Pull GitHub's live branch protection back into the repo         |
+| `make environments-apply`  | Create/update the deployment environments on GitHub             |
+| `make environments-diff`   | Report drift between `.github/environments/` and GitHub         |
+| `make actions-lock`        | Regenerate `.github/workflows/actions.lock`                     |
+| `make actions-lock-verify` | Verify the lockfile upstream — what the `actions-lock` job runs |
 
-Run `make` (or `make help`) for the same list, generated from the Makefile.
+Run `make` (or `make help`) for the full list, generated from the Makefile. The
+table above omits internal helpers such as `check-python`, `check-tofu` and
+`check-gh-actions-lock`, which exist to fail with a useful message when a
+toolchain is missing.
+
+Three toolchains are not installed by `make setup`, because they are separate
+tools rather than project dependencies: **`gh`** (branch protection,
+environments, the actions lockfile), **`tofu`** (the test environment), and the
+**`gh actions-lock` extension**. Each target that needs one says so when it is
+absent.
 
 ## Commit hygiene
 
@@ -140,37 +170,45 @@ Edit `src/_data/site.json` to set your site's URL, title, description, and autho
 
 ## Security Headers
 
-Provider-specific HTTP security headers (CSP, X-Frame-Options, Referrer-Policy, etc.) live in `ops/headers/` and are copied into `dist/` at build time via `HOSTING_TARGET`:
+Response headers — CSP, HSTS, `Permissions-Policy` — live in one committed file,
+`staticwebapp.config.json`. It is **not** copied into the build output.
+`scripts/release-package.mjs` reads it at packaging time and writes one variant
+per environment into the release package, and the deploy points Azure's
+`config_file_location` at the matching directory.
 
-```bash
-HOSTING_TARGET=netlify make build
-HOSTING_TARGET=cloudflare make build
-```
+That split is the point: **host configuration is infrastructure, content is the
+artifact.** Both environments serve a byte-identical site with one hash, while
+still differing in how the host answers — the only sanctioned difference being
+`X-Robots-Tag: noindex, nofollow` on the test host.
 
-See `docs/hosting-setup.md` for full setup instructions.
+See [`docs/hosting-setup.md`](docs/hosting-setup.md), which also records the
+headers this file is still missing.
 
 ## CI/CD
 
 All workflows run via GitHub Actions:
 
-| Workflow             | Trigger                      | Purpose                                         | Blocks merge |
-| -------------------- | ---------------------------- | ----------------------------------------------- | ------------ |
-| `ci.yml`             | PR, push to `main`/`develop` | `make ci` — hooks + lint + build + test         | yes (`ci`)   |
-| `lighthouse.yml`     | PR, push to `main`/`develop` | Lighthouse budgets (perf ≥0.90, a11y/SEO ≥0.95) | yes          |
-| `security.yml`       | PR, push, weekly             | CodeQL SAST, OSV-Scanner, dependency review     | partly¹      |
-| `secrets.yml`        | PR, push, weekly             | Gitleaks secret scanning                        | yes          |
-| `linkcheck.yml`      | PR, weekly                   | Broken link detection                           | no²          |
-| `infra.yml`          | PR, push (infra paths)       | `make tf-validate` — OpenTofu, no credentials   | no³          |
-| `release-please.yml` | Push to `develop`            | Version + changelog from Conventional Commits   | n/a          |
-| `release.yml`        | Release published            | Build + attest the package, then deploy to test | n/a          |
-| `promote-prod.yml`   | Manual dispatch              | Promote a version to production, after approval | n/a          |
-| `monitor.yml`        | Weekly                       | Production Lighthouse + security header checks  | n/a          |
+| Workflow             | Trigger                      | Purpose                                          | Blocks merge |
+| -------------------- | ---------------------------- | ------------------------------------------------ | ------------ |
+| `ci.yml`             | PR, push to `main`/`develop` | `make ci` — hooks + lint + build + test          | yes (`ci`)   |
+| `lighthouse.yml`     | PR, push to `main`/`develop` | Lighthouse budgets (perf ≥0.90, a11y/SEO ≥0.95)  | yes          |
+| `security.yml`       | PR, push, weekly             | CodeQL SAST, OSV-Scanner, dependency review      | partly¹      |
+| `secrets.yml`        | PR, push, weekly             | Gitleaks secret scanning                         | yes          |
+| `linkcheck.yml`      | PR, weekly                   | Broken link detection                            | no²          |
+| `infra.yml`          | PR, push (infra paths)       | `make tf-validate` — OpenTofu, no credentials    | no³          |
+| `actions-lock.yml`   | PR, push to `main`/`develop` | Verify `.github/workflows/actions.lock` upstream | not yet⁴     |
+| `release-please.yml` | Push to `develop`            | Version + changelog from Conventional Commits    | n/a          |
+| `release.yml`        | Release published            | Build + attest the package, then deploy to test  | n/a          |
+| `promote-prod.yml`   | Manual dispatch              | Promote a version to production, after approval  | n/a          |
+| `monitor.yml`        | Weekly                       | Production Lighthouse + security header checks   | n/a          |
 
 ¹ `dependency-review` and `osv-scan` block; `codeql` does not, because its own
 `if:` excludes pull requests. ² Lychee resolves external URLs, so it fails on
 other people's outages. ³ `infra` only runs when `infra/**` changes, and a
 required check that does not run on every pull request would block every other
-one forever. Both exclusions are explained in
+one forever. ⁴ `actions-lock` deliberately carries no `paths:` filter, so unlike
+`infra` it _can_ be required — it just has not been added to
+`main-protection.json` yet. All of these are explained in
 [`.github/rulesets/README.md`](.github/rulesets/README.md).
 
 `ci.yml` is a **thin wrapper**: it checks out the code, installs Node and

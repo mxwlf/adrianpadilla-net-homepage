@@ -1,95 +1,73 @@
-# Pending Inputs - Decisions Required
+# Open items
 
-The template has been scaffolded with sensible defaults and placeholder values. The items below require your input before the site is production-ready.
-
----
-
-## 1. Site Identity (update `src/_data/site.json`)
-
-| Field         | Current placeholder                          | What you need to provide                                |
-| ------------- | -------------------------------------------- | ------------------------------------------------------- |
-| `url`         | `https://example.com`                        | Your production domain (e.g., `https://yourdomain.com`) |
-| `lang`        | `en-US`                                      | Primary locale if different                             |
-| `title`       | `Site Title`                                 | Your actual site title                                  |
-| `description` | `A fast, accessible, mostly-static website.` | A real meta description (50-160 chars)                  |
-| `author`      | `Your Team`                                  | Team or individual name                                 |
-| `socialImage` | `/assets/img/social-card.png`                | Path to your OG image (1200x630px recommended)          |
-
-**Action:** Edit `src/_data/site.json` with your values.
+What is genuinely still outstanding on this site. This started as the template's
+scaffolding checklist; most of it has since been answered, and the answered
+items were removed rather than left to be re-read. What they resolved to is
+recorded at the bottom.
 
 ---
 
-## 2. Hosting Provider
+## 1. The social card image is missing, and the site advertises it
 
-The template includes security headers for multiple providers. You need to choose one:
+`src/_data/site.json` sets `"socialImage": "/assets/img/social-card.png"`, so
+every page emits:
 
-- **GitHub Pages** - simplest, but no custom response headers (CSP/HSTS not supported)
-- **Netlify** - supports `_headers` file and `netlify.toml`, preview deploys included
-- **Cloudflare Pages** - supports `_headers` file, edge rules, preview deploys
-- **AWS (S3 + CloudFront)** - most control, most setup
+```html
+<meta property="og:image" content="https://adrianpadilla.net/assets/img/social-card.png" />
+```
 
-**Action:** Set `HOSTING_TARGET` env var (e.g., `cloudflare` or `netlify`) and run `scripts/copy-headers.sh` during build, or manually copy from `ops/headers/<provider>/` into `dist/`.
+That file does not exist. Verified against the live site:
+
+```console
+$ curl -sI https://adrianpadilla.net/assets/img/social-card.png | head -1
+HTTP/2 404
+```
+
+So link previews on Slack, LinkedIn, iMessage and anything else that reads
+Open Graph currently resolve an image that 404s. `.claude/rules/seo.md` requires
+`og:image` on all public pages, so this is a live rule violation, not a nicety.
+
+**Needs:** a 1200×630 PNG or JPG at `src/assets/img/social-card.png`. Nothing in
+the build needs changing — the path is already wired up and fingerprinted.
+
+If a card is not wanted, the alternative is to remove `socialImage` from
+`site.json` and drop the `og:image` tag from the layout, which also means
+amending the SEO rule. A missing tag is better than a broken one; an actual
+image is better than both.
 
 ---
 
-## 3. Social Card Image
+## 2. The "Me" page is still a stub
 
-The OG image at `/assets/img/social-card.png` needs to be created.
-
-**Requirements:** 1200x630px, PNG or JPG, represents your brand/site.
-
-**Action:** Add your image to `src/assets/img/social-card.png`.
-
----
-
-## 4. The "Me" Page Has No Real Content
-
-`src/pages/about/me.njk` is a stub: name, handle, and a link to LinkedIn. The
+`src/pages/about/me.njk` is 17 lines: a name, a handle, and a LinkedIn link. The
 prototype it was ported from carried lorem ipsum in place of a bio, so there was
 nothing to bring across.
 
-**Action:** Write the bio into `src/pages/about/me.njk`.
+**Needs:** the bio.
 
 ---
 
-## 5. Visual Regression Tests - Merge Gate?
+## 3. Visual regression tests: wanted as a merge gate?
 
-The spec lists visual regression as "Optional (team choice)" for merge gating.
+The origin spec listed visual regression as "optional, team choice". Nothing has
+been built either way, so this is still an open decision rather than a task.
 
-- **Yes** - catches unintended layout changes, but requires maintaining baseline screenshots
-- **No** - less CI friction, rely on manual review for visual changes
+- **Yes** — catches unintended layout changes, at the cost of maintaining
+  baseline screenshots and the flake that comes with them.
+- **No** — less CI friction; rely on review and the Lighthouse budgets.
 
-**Action:** Decide and configure in your GitHub branch protection rules if desired.
-
----
-
-## 6. MCP Server Configuration (`.mcp.json`)
-
-The MCP config has a skeleton for an issue tracker integration. If you use one:
-
-**Action:** Replace placeholder values in `.mcp.json` with your actual server command, args, and set the `ISSUE_TRACKER_TOKEN` environment variable.
+Worth noting that the gate is already fairly heavy: `ci`, `lighthouse`,
+`dependency-review`, `osv-scan` and `gitleaks` all block a merge, with `infra`
+and `actions-lock` reporting alongside.
 
 ---
 
-## 7. Node.js Version
+## Resolved, for the record
 
-Currently pinned to **Node 20** in CI workflows.
-
-**Action:** If you need a different version, update `.github/workflows/*.yml` and optionally add an `.nvmrc` file.
-
----
-
-## 8. Domain and DNS
-
-For deployment to work with custom domains:
-
-**Action:** Configure DNS with your hosting provider and update `src/_data/site.json` url field.
-
----
-
-## Priority Order
-
-1. **Site Identity** (#1) - needed before any real content
-2. **Hosting Provider** (#2) - needed before first deploy
-3. **Social card** (#3) - needed for link previews
-4. Everything else - can be deferred
+| Was                                                   | Resolution                                                                                                                                              |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Site identity placeholders                            | `src/_data/site.json` is filled in — real URL, title, description, author                                                                               |
+| Hosting provider (Pages / Netlify / Cloudflare / AWS) | **Azure Static Web Apps**, two environments. See [`docs/deployment.md`](docs/deployment.md)                                                             |
+| MCP server skeleton for an issue tracker              | `.mcp.json` carries Playwright; the issue-tracker placeholder is gone                                                                                   |
+| Node version pinned per workflow                      | `.nvmrc` is the single source, read by every `setup-node` step. Now Node 24                                                                             |
+| Domain and DNS                                        | `adrianpadilla.net` is live, zone in the `connectivity` subscription. `test.adrianpadilla.net` is covered in [`docs/deployment.md`](docs/deployment.md) |
