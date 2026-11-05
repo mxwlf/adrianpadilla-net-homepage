@@ -67,6 +67,7 @@ RULESETS := ./scripts/github-rulesets.sh
 
 .PHONY: help setup venv check-python hooks \
         dev build clean clean-venv fmt lint test a11y lighthouse ci \
+        reports sbom package \
         rulesets-apply rulesets-diff rulesets-export
 
 help: ## Show available targets
@@ -131,8 +132,44 @@ a11y: ## Run the axe-core accessibility audit
 lighthouse: ## Run Lighthouse CI locally (lab budgets)
 	npm run lighthouse
 
-clean: ## Remove dist/, caches, and test artifacts
-	rm -rf dist .cache .lighthouseci playwright-report test-results
+# ---------------------------------------------------------------------------
+# RELEASE PACKAGING
+# ---------------------------------------------------------------------------
+# The pipeline builds ONCE and promotes the result. These targets turn a build
+# into the versioned package that the test environment and production both
+# deploy from, so a promotion never rebuilds. See scripts/release-package.mjs.
+#
+# `package` needs a version, because the package is named by one:
+#     make package RELEASE_VERSION=1.2.3
+# The release workflow passes the version release-please resolved. Locally,
+# anything will do — the package is then throwaway.
+
+RELEASE_VERSION ?=
+RELEASE_COMMIT ?= $(shell git rev-parse HEAD)
+
+reports: build ## Re-run every gate in report-producing mode into reports/
+	@mkdir -p reports/html-validate reports/playwright reports/a11y reports/lighthouse
+	npm run --silent report:html > reports/html-validate/report.json
+	PLAYWRIGHT_JSON_OUTPUT_NAME=$(CURDIR)/reports/playwright/report.json npm run --silent report:e2e
+	PLAYWRIGHT_JSON_OUTPUT_NAME=$(CURDIR)/reports/a11y/report.json npm run --silent report:a11y
+	npm run --silent report:lighthouse
+
+sbom: ## Write a CycloneDX SBOM of the dependency tree to sbom/
+	@mkdir -p sbom
+	npm run --silent sbom
+
+package: reports sbom ## Assemble the versioned, hash-verified release package in release/
+	@test -n "$(RELEASE_VERSION)" || { \
+		echo 'Error: RELEASE_VERSION is required.' 1>&2; \
+		echo '       make package RELEASE_VERSION=1.2.3' 1>&2; \
+		exit 1; \
+	}
+	RELEASE_VERSION=$(RELEASE_VERSION) RELEASE_COMMIT=$(RELEASE_COMMIT) \
+		node scripts/release-package.mjs
+	cd release && sha256sum -c SHA256SUMS > /dev/null && echo "SHA256SUMS verified"
+
+clean: ## Remove dist/, caches, and test and release artifacts
+	rm -rf dist .cache .lighthouseci playwright-report test-results reports sbom release
 
 clean-venv: ## Remove .venv (rebuild it with `make setup`)
 	rm -rf $(VENV)

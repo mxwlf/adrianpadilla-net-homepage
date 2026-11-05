@@ -1,5 +1,5 @@
 {
-  "name": "static-template",
+  "name": "adrianpadilla-net-homepage",
   "private": true,
   "type": "module",
   "engines": {
@@ -14,11 +14,17 @@
     "test:unit": "node --test",
     "test:e2e": "playwright test --reporter=line",
     "test:a11y": "playwright test -c playwright.a11y.config.ts --reporter=line",
-    "lighthouse": "lhci autorun"
+    "lighthouse": "lhci autorun",
+    "report:html": "html-validate \"dist/**/*.html\" --formatter json",
+    "report:e2e": "playwright test --reporter=json",
+    "report:a11y": "playwright test -c playwright.a11y.config.ts --reporter=json",
+    "report:lighthouse": "lhci autorun --upload.target=filesystem --upload.outputDir=reports/lighthouse",
+    "sbom": "cyclonedx-npm --output-format JSON --output-file sbom/bom.cdx.json"
   },
   "devDependencies": {
     "@11ty/eleventy": "^3.1.7",
     "@axe-core/playwright": "^4.14.0",
+    "@cyclonedx/cyclonedx-npm": "6.0.1",
     "@eslint/js": "^10.0.1",
     "@lhci/cli": "^0.15.1",
     "@playwright/test": "^1.64.1",
