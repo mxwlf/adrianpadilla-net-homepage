@@ -4,6 +4,11 @@
       "actor_id": 5,
       "actor_type": "RepositoryRole",
       "bypass_mode": "pull_request"
+    },
+    {
+      "actor_id": 5622267,
+      "actor_type": "Integration",
+      "bypass_mode": "always"
     }
   ],
   "conditions": {
