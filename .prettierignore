@@ -9,6 +9,14 @@ release/
 reports/
 sbom/
 
+# Written by release-please on every release, and the two tools disagree about
+# markdown permanently: release-please emits `*` list bullets and an extra blank
+# line after a version heading, Prettier rewrites bullets to `-` and removes the
+# blank. Linting it meant every release pull request failed `ci` on a file no
+# human wrote, and `prettier --write` would only be undone by the next release.
+# Same reasoning as .github/rulesets/ above.
+CHANGELOG.md
+
 # Branch protection as code. These files are written by `make rulesets-export`
 # straight from the GitHub API, in the canonical form scripts/github-rulesets.sh
 # normalizes to (2-space indent, sorted keys, one array element per line).
