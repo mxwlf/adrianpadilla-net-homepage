@@ -1,3 +1,21 @@
+{#
+  The version links to its release notes on GitHub.
+
+  Two things make that link safe to have. The repository URL comes from
+  site.json, so it is declared once with the rest of the global metadata rather
+  than hardcoded here. And the link checker excludes this repository's
+  releases/tag/ URLs, because in a release pull request version.txt already
+  holds the NEW version while its tag does not exist yet -- without the
+  exclusion the link would be a guaranteed 404 on exactly the pull request that
+  bumps it, the same trap the changelog's compare link set.
+
+  The version is spelled out rather than rendered as a bare "v1.0.1", so it
+  needs no visually-hidden label and no ARIA: "Version 1.0.1" reads correctly
+  aloud and on screen, and works as link text that describes where it goes.
+#}
 <footer class="site-footer">
   <p class="footer-text">&copy; {{ build.year }} {{ site.author }}. All rights reserved.</p>
+  <p class="footer-version">
+    <a href="{{ site.repository }}/releases/tag/v{{ build.version }}">Version {{ build.version }}</a>
+  </p>
 </footer>
