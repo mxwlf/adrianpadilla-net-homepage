@@ -1,4 +1,4 @@
-# Project constitution (static template)
+# Project constitution — adrianpadilla.net
 
 ## Non-negotiables
 
@@ -11,22 +11,42 @@
 
 - Run `make setup` once per clone or worktree. It creates `.venv/` and activates
   the committed git hooks; `make ci` fails without it.
+- `make ci` also needs **OpenTofu** (`brew install opentofu`), which `make setup`
+  does not install — it checks `infra/` formatting alongside everything else.
 - Always run: `make ci` before opening a PR.
 - If CI fails, fix the root cause (do not disable gates without explicit approval).
 - Commit messages must follow Conventional Commits; the `commit-msg` hook enforces it.
-- `main` is protected. Changes reach it only through a pull request, merged with a
-  merge commit. Never push to `main` directly and never use `--no-verify`.
+- Work lands on **`develop`** by pull request. `main` is the record of what is in
+  production. Both are protected; never push to either directly, and never use
+  `--no-verify`.
 
 ## Architecture
 
 - Eleventy builds from `src/` to `dist/`.
 - `scripts/generate-sitemap.mjs` writes `dist/sitemap.xml`.
-- `make ci` is the single gate (hooks + lint + build + test); the workflows in
-  `.github/workflows/` are thin wrappers around it. Change what CI does in the
-  `Makefile`, `package.json` or `.pre-commit-config.yaml`, not in workflow YAML.
-- Branch protection is code: `.github/rulesets/*.json`, applied with
-  `make rulesets-apply`. A required check's `context` is a workflow job id —
-  renaming one without the other makes PRs hang forever.
+- `make ci` is the single gate; the workflows in `.github/workflows/` are thin
+  wrappers around it. Change what CI does in the `Makefile`, `package.json` or
+  `.pre-commit-config.yaml`, not in workflow YAML.
+- **The pipeline builds once and promotes the result.** A merge to `develop`
+  produces one versioned, hash-verified release package; the test environment
+  deploys it automatically and production deploys the _same bytes_ after you
+  approve. Nothing rebuilds on the way to production. See
+  @docs/deployment.md.
+- **Host configuration is infrastructure, content is the artifact.**
+  `staticwebapp.config.json` is never copied into the build output; per-
+  environment variants are written at packaging time and selected at deploy.
+  See @docs/hosting-setup.md.
+- **Three things are code, not settings**, and each has a `make` target plus a
+  README explaining what the API cannot reproduce:
+  - branch protection — `.github/rulesets/*.json`, `make rulesets-apply`
+  - deployment environments — `.github/environments/*.json`, `make environments-apply`
+  - action dependencies — `.github/workflows/actions.lock`, `make actions-lock`
+- A required check's `context` is a workflow job id — renaming one without the
+  other makes PRs hang forever. A job with a `paths:` filter must never be
+  required, for the same reason.
+- `infra/test/` describes the test environment in OpenTofu. It deliberately owns
+  no DNS: the `adrianpadilla.net` zone also serves the live site and several
+  other services, so the deploy identity holds no DNS permissions at all.
 
 ## References
 

@@ -25,7 +25,7 @@ A step-by-step guide to building and publishing your own site with this template
 - **Node.js** v18 or later (`node --version` to check)
 - **npm** v9 or later (`npm --version` to check)
 - **Git**
-- A hosting account: [GitHub Pages](https://pages.github.com/), [Cloudflare Pages](https://pages.cloudflare.com/), or [Netlify](https://netlify.com/)
+- An Azure subscription, if you are deploying this site rather than only running it locally. See [deployment.md](deployment.md)
 
 ---
 
@@ -418,41 +418,45 @@ Runs Lighthouse CI against the built site and checks against the configured budg
 
 ## 11. Publish your site
 
-### Option A — GitHub Pages (simplest)
+This site publishes to **Azure Static Web Apps** through a staged pipeline, and
+it is involved enough to have its own document:
+**[deployment.md](deployment.md)**.
 
-1. Push your repository to GitHub
-2. Go to **Settings → Pages**
-3. Set source to **GitHub Actions**
-4. The `deploy.yml` workflow deploys automatically on every push to `main`
+The short version, because the shape is the part worth knowing:
 
-> GitHub Pages does not support custom HTTP headers (CSP, etc.). For production use, prefer Cloudflare Pages or Netlify.
-
-### Option B — Cloudflare Pages
-
-1. Connect your repository in the Cloudflare Pages dashboard
-2. Set build settings:
-   - **Build command**: `HOSTING_TARGET=cloudflare make build && HOSTING_TARGET=cloudflare ./scripts/copy-headers.sh`
-   - **Output directory**: `dist`
-3. Deploy
-
-The security headers in `ops/headers/cloudflare/_headers` will be copied into `dist/` and served automatically.
-
-### Option C — Netlify
-
-**Option 1 — `_headers` file:**
-
-1. Connect your repository in Netlify
-2. Set build settings:
-   - **Build command**: `HOSTING_TARGET=netlify make build && HOSTING_TARGET=netlify ./scripts/copy-headers.sh`
-   - **Publish directory**: `dist`
-
-**Option 2 — `netlify.toml`:**
-
-```bash
-cp ops/headers/netlify/netlify.toml ./netlify.toml
+```
+PR ──▶ develop ──▶ release PR ──▶ merge ──▶ tag + GitHub Release
+                                                   │
+                                        ONE build (release.yml)
+                                                   │
+                                     ┌─────────────┴──────────────┐
+                                     ▼                            ▼
+                             test (automatic)          production (you approve)
+                         test.adrianpadilla.net          adrianpadilla.net
 ```
 
-Commit the file to your repository root. Netlify will pick it up automatically and no build command changes are needed.
+The pipeline **builds once and promotes the result**. Production serves the same
+bytes the test environment served, verified by digest, never a rebuilt copy. So
+there is no "deploy command" to run here, and nothing to configure per provider:
+
+- Work lands on `develop` by pull request.
+- release-please keeps a release pull request open; merging it tags and publishes
+  a GitHub Release.
+- That triggers one build, which is attested, hash-verified, and deployed to the
+  test environment automatically.
+- Production happens when you approve it — **Actions → Promote to production**,
+  behind a required reviewer on the `production` environment.
+
+Response headers come from `staticwebapp.config.json`, one committed file, with
+per-environment variants written at packaging time. See
+[hosting-setup.md](hosting-setup.md).
+
+> **If you are reusing this template elsewhere**, none of the above is inherent
+> to Eleventy — it is this site's deployment choice. Earlier revisions of this
+> guide described GitHub Pages, Cloudflare Pages and Netlify options with an
+> `ops/headers/` directory and a `HOSTING_TARGET` copy script. None of that was
+> ever used here, so it has been removed; check the template this repository was
+> generated from if you want those paths.
 
 ### Verify after deploy
 
@@ -465,4 +469,4 @@ Once live, confirm the following:
 - [ ] `/robots.txt` is accessible
 - [ ] Page titles match your `site.json` values
 - [ ] Open Graph previews show correct title, description, and image (use [opengraph.xyz](https://www.opengraph.xyz/) to check)
-- [ ] Security headers are present (use [securityheaders.com](https://securityheaders.com/) to check — not applicable for GitHub Pages)
+- [ ] Security headers are present (use [securityheaders.com](https://securityheaders.com/) to check). `monitor.yml` also checks these weekly
