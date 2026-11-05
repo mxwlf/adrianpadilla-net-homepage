@@ -64,6 +64,18 @@ Three toolchains in total, then: Node for the site, Python (via `.venv`) for the
 commit hooks, and OpenTofu for the infrastructure. `make ci` names whichever one
 is missing and how to get it.
 
+## Documentation
+
+| Document                                                               | Covers                                                                                  |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [`docs/getting-started.md`](docs/getting-started.md)                   | Building the site: templates, pages, assets, the local commands                         |
+| [`docs/deployment.md`](docs/deployment.md)                             | How a change reaches production — branches, releases, the approval gate, one-time setup |
+| [`docs/hosting-setup.md`](docs/hosting-setup.md)                       | Response headers, and how the per-environment variants are built                        |
+| [`docs/hardening-github-actions.md`](docs/hardening-github-actions.md) | The Actions supply-chain work, and how to apply it to another repository                |
+| [`.github/rulesets/README.md`](.github/rulesets/README.md)             | Branch protection as code, and the protections that live on the repo instead            |
+| [`pending-inputs.md`](pending-inputs.md)                               | What is still genuinely open                                                            |
+| [`.claude/CLAUDE.md`](.claude/CLAUDE.md)                               | The project's non-negotiables and architecture rules                                    |
+
 ## Commands
 
 | Command                    | Purpose                                                         |
