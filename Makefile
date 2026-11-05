@@ -65,9 +65,15 @@ VENV_STAMP := $(VENV)/.requirements-installed
 
 RULESETS := ./scripts/github-rulesets.sh
 
+# OpenTofu, for the test environment in infra/test/. Not installed by
+# `make setup` — it is a separate toolchain, like `gh`.
+TOFU ?= tofu
+INFRA_TEST := infra/test
+
 .PHONY: help setup venv check-python hooks \
         dev build clean clean-venv fmt lint test a11y lighthouse ci \
         reports sbom package \
+        check-tofu tf-fmt tf-fmt-check tf-validate tf-bootstrap tf-init tf-plan tf-apply \
         rulesets-apply rulesets-diff rulesets-export
 
 help: ## Show available targets
@@ -182,10 +188,63 @@ clean-venv: ## Remove .venv (rebuild it with `make setup`)
 # that reached the branch without them (e.g. made before `make setup`, or with
 # --no-verify).
 
-ci: hooks lint build test ## Full gate: git hygiene + lint + build + test
+ci: hooks lint tf-fmt-check build test ## Full gate: git hygiene + lint + infra format + build + test
 
 hooks: venv ## Run all pre-commit hooks against all files (same hooks as the git hooks)
 	$(PRE_COMMIT) run --all-files --show-diff-on-failure
+
+# ---------------------------------------------------------------------------
+# INFRASTRUCTURE (OpenTofu, test environment)
+# ---------------------------------------------------------------------------
+# infra/test/ describes test.adrianpadilla.net. See infra/test/main.tf for what
+# it deliberately does NOT manage (DNS, and the resource group).
+#
+# Only `tf-fmt-check` is part of `ci`. It parses the HCL, so a malformed file
+# still cannot merge, and it needs no providers and no network. `tf-validate`
+# does need providers: `tofu init` downloads the azurerm plugin, which is a few
+# hundred megabytes, and making every `make ci` on every laptop pay that would
+# break the rule that the gate is cheap enough to run before every push. It runs
+# instead as its own job, with the plugin directory cached — see
+# .github/workflows/infra.yml.
+#
+# tf-plan and tf-apply need Azure credentials and are never part of any gate.
+
+check-tofu: ## Verify OpenTofu is installed
+	@command -v $(TOFU) > /dev/null 2>&1 || { \
+		echo 'Error: `$(TOFU)` was not found on your PATH.' 1>&2; \
+		echo '       The site gate needs it to check infra/test/ formatting:' 1>&2; \
+		echo '           brew install opentofu' 1>&2; \
+		echo '       See https://opentofu.org/docs/intro/install/ for other systems.' 1>&2; \
+		exit 1; \
+	}
+
+tf-fmt: check-tofu ## Rewrite infra/ into canonical OpenTofu formatting
+	$(TOFU) -chdir=$(INFRA_TEST) fmt
+
+tf-fmt-check: check-tofu ## Fail if infra/ is not canonically formatted
+	$(TOFU) -chdir=$(INFRA_TEST) fmt -check -diff
+
+tf-validate: check-tofu ## Download providers and validate infra/ (no credentials needed)
+	$(TOFU) -chdir=$(INFRA_TEST) init -backend=false -input=false
+	$(TOFU) -chdir=$(INFRA_TEST) validate
+
+tf-bootstrap: ## Create the Blob Storage that holds the test environment's state (run once)
+	./scripts/tf-bootstrap.sh
+
+tf-init: check-tofu ## Initialise the backend from infra/test/backend.config
+	@test -f $(INFRA_TEST)/backend.config || { \
+		echo 'Error: $(INFRA_TEST)/backend.config does not exist.' 1>&2; \
+		echo '       Create the state storage first:' 1>&2; \
+		echo '           SUBSCRIPTION_ID=<guid> RESOURCE_GROUP=<name> make tf-bootstrap' 1>&2; \
+		exit 1; \
+	}
+	$(TOFU) -chdir=$(INFRA_TEST) init -input=false -backend-config=backend.config
+
+tf-plan: tf-init ## Show what would change in the test environment
+	$(TOFU) -chdir=$(INFRA_TEST) plan
+
+tf-apply: tf-init ## Apply the test environment
+	$(TOFU) -chdir=$(INFRA_TEST) apply
 
 # ---------------------------------------------------------------------------
 # GITHUB RULESETS (branch protection as code)

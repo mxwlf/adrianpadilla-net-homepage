@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+#
+# Both values are required and have no defaults. subscription_id especially:
+# a default would let the test environment silently fall back to whichever
+# subscription happened to be selected, and production lives in one of them.
+
+subscription_id     = "00000000-0000-0000-0000-000000000000"
+resource_group_name = "adrianpadilla-net-homepage-test"
+
+# Optional overrides — the defaults in variables.tf are the intended values.
+# location            = "westus2"
+# static_web_app_name = "adrianpadilla-net-homepage-test"
+# custom_domain       = "test.adrianpadilla.net"

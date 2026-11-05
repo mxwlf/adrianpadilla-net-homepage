@@ -115,3 +115,67 @@ git push origin v1.0.0
 
 Sign the tag if you can — `main` requires signed commits, and a signed baseline
 keeps the chain consistent.
+
+### The test environment
+
+`infra/test/` describes `test.adrianpadilla.net` in OpenTofu. Install it with
+`brew install opentofu`; it is a separate toolchain and `make setup` does not
+provide it.
+
+**1. A resource group, created by hand.** In its own subscription, separate from
+production. OpenTofu references the group rather than creating it, so it never
+holds delete authority over the group itself.
+
+**2. State storage.** This is the one thing OpenTofu cannot create, because it is
+where OpenTofu keeps its state:
+
+```sh
+SUBSCRIPTION_ID=<test subscription guid> \
+RESOURCE_GROUP=<the group from step 1> \
+make tf-bootstrap
+```
+
+The account is created with `--allow-shared-key-access false`, so the only way
+to reach the state is an Entra identity holding a data-plane role. There is no
+storage key to leak or rotate. The script grants your own identity, writes
+`infra/test/backend.config`, and enables blob versioning plus 30-day soft delete.
+
+**3. Variables.**
+
+```sh
+cp infra/test/terraform.tfvars.example infra/test/terraform.tfvars
+# fill in subscription_id and resource_group_name
+make tf-plan
+```
+
+**4. Apply, then the one DNS record.** The first apply happens in two passes,
+because the CNAME cannot be created until the Static Web App exists and its
+Azure hostname is known:
+
+```sh
+make tf-apply                 # creates the Static Web App; custom domain fails
+tofu -chdir=infra/test output cname_record_to_create
+```
+
+Create that CNAME in the `adrianpadilla.net` zone — which lives in the
+`connectivity` subscription, resource group `dns-prod` — then `make tf-apply`
+again to bind the custom domain.
+
+**This record is deliberately not managed by OpenTofu.** That zone also serves
+the apex records for the live site plus `git`, `id`, `ntfy`, `codenomad`,
+`macwolf`, `ief-replay`, the DKIM selectors and a Tailscale challenge. Granting
+the deploy identity `DNS Zone Contributor` there would let a bad plan delete all
+of it, so it holds no DNS permissions at all. The record never changes once
+created.
+
+Delegating `test.adrianpadilla.net` as its own zone would avoid the manual step,
+and was rejected: it makes the hostname a zone apex, which forces Azure's
+`dns-txt-token` validation — documented as not waited on, so OpenTofu would
+report success without confirming — and a zone apex cannot hold a CNAME, while
+Azure DNS cannot point an ALIAS record at a Static Web App.
+
+### A note on `infra.yml`
+
+It carries `paths:` filters, so it does not run on every pull request. It must
+therefore **never** be made a required status check: a required check that is
+not reported leaves every unrelated pull request waiting on it forever.
