@@ -13,6 +13,45 @@ paths:
 - Never commit secrets, API keys, or credentials; use environment variables.
 - Dependency changes must pass `dependency-review-action` (fail on severity >= high).
 - CodeQL and OSV scanning must remain enabled; do not disable security workflows.
+- **Accepted dependency risk: `extract-zip` 2.0.1.** Two high Dependabot advisories
+  — GHSA-7pqw-9j4j-h8q3 (arbitrary file write via symlink archive entries) and
+  GHSA-jmr9-qjv8-65gv (unvalidated symlink path traversal) — are **dismissed as
+  tolerable risk**, not fixed. Both report `first_patched_version: NONE`; 2.0.1 is
+  the latest release and is vulnerable, so no version bump or `overrides` entry can
+  clear them.
+
+  The code path is unreachable here, which is the basis for accepting it:
+
+  - `extract-zip` has exactly one call site in the whole tree —
+    `@puppeteer/browsers/lib/cjs/install.js:233` → `unpackArchive()`, reached only
+    from `install()`, the browser _download_ routine.
+  - Nothing invokes it. `lighthouse` depends on `puppeteer-core`, which by design
+    never downloads a browser; it lists the full `puppeteer` package (the one with
+    the downloading postinstall) only in its own devDependencies, which npm does
+    not install for us. Grepping `node_modules/lighthouse/` and `node_modules/@lhci/`
+    for `@puppeteer/browsers` returns **zero files**.
+  - What actually runs: `chrome-launcher` launches Chrome, and `puppeteer-core` is
+    used for one line — `puppeteer.connect({browserURL})` in
+    `lighthouse/core/gather/navigation-runner.js:283` — which attaches to an
+    already-running browser over CDP.
+  - It is a devDependency four levels deep (`@lhci/cli` → `lighthouse` →
+    `puppeteer-core` → `@puppeteer/browsers`). The site itself has **zero runtime
+    dependencies**, so none of this ships.
+
+  Exploiting it would require handing an attacker-controlled zip to a function this
+  project never calls. `osv-scan` and `dependency-review` both pass.
+
+  **A working fix exists and was deliberately declined.**
+  `"extract-zip": "npm:@electron-internal/extract-zip@^1.0.8"` — the official
+  successor from the same repository — was tested end to end: it removes 7 packages,
+  clears both alerts, and passes `make ci`, `npm run lighthouse` and a direct
+  exercise of the real `unpackArchive()` path. It was rejected because it ships
+  7.2 MB of **9 prebuilt native `.node` binaries** in a single tarball, which is a
+  larger and less auditable supply-chain surface than the unreachable flaw it
+  removes. Revisit if `@puppeteer/browsers` ever calls `install()` on our behalf, or
+  if that package drops `extract-zip` upstream — at which point the override becomes
+  unnecessary anyway.
+
 - Every action the workflows use is pinned through **`.github/workflows/actions.lock`**, not through SHAs in `uses:` lines. Workflow files reference a full semver tag (`actions/checkout@v7.0.1`) and the lockfile records the commit it resolves to, plus the source repository's numeric `owner_id`/`repo_id`. Never edit the lockfile by hand.
 
   The lockfile supersedes SHA pinning and covers two things a SHA in a `uses:` line cannot:
