@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# Actions lockfile verification
+# ---------------------------------------------------------------------------
+# .github/workflows/actions.lock pins every action the workflows use, including
+# transitive ones, to a commit. This job proves the lockfile still describes
+# reality before a pull request can merge.
+#
+# `--verify` resolves every reference upstream, so it catches what a static read
+# of the files cannot: a tag moved onto different code, a force-pushed history
+# that orphaned a locked commit, or a source repository whose numeric owner/repo
+# id no longer matches the one that was locked. That last case is a rename or a
+# takeover, and it is the thing a bare SHA in a `uses:` line cannot detect.
+#
+# NO `paths:` FILTER, ON PURPOSE. A required status check that does not run on
+# every pull request is never reported, and GitHub waits on it forever — which
+# is why `infra` is deliberately not required. This job is cheap enough to run
+# unconditionally so it can be made required instead.
+#
+# Verification only, never generation: the job must not be able to rewrite the
+# lockfile it is checking. Regenerate locally with `make actions-lock` and
+# commit the result.
+
+name: Actions lockfile
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: actions-lock-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actions-lock:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # gh is preinstalled on GitHub-hosted runners; the extension is not.
+      - name: Install the actions-lock extension
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh extension install github/gh-actions-lock
+
+      # Reads public action repositories, so the default token is enough.
+      - name: Verify the lockfile
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: make actions-lock-verify
