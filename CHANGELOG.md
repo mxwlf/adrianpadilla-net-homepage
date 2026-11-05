@@ -4,6 +4,14 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.2.1](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.2.0...v1.2.1) (2026-11-05)
+
+
+### Fixes
+
+* **ci:** drop a stray action input from the production deploy step ([15fb719](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/15fb719ed6850cd5c6d58491d449f8c39e821ec8))
+* **ci:** drop a stray action input from the production deploy step ([1466155](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/146615503f94675787cac12a67ffb621d790f756))
+
 ## [1.2.0](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.1.0...v1.2.0) (2026-11-05)
 
 
