@@ -64,6 +64,7 @@ PRE_COMMIT := $(VENV_BIN)/pre-commit
 VENV_STAMP := $(VENV)/.requirements-installed
 
 RULESETS := ./scripts/github-rulesets.sh
+ENVIRONMENTS := ./scripts/github-environments.sh
 
 # OpenTofu, for the test environment in infra/test/. Not installed by
 # `make setup` — it is a separate toolchain, like `gh`.
@@ -74,7 +75,8 @@ INFRA_TEST := infra/test
         dev build clean clean-venv fmt lint test a11y lighthouse ci \
         reports sbom package \
         check-tofu tf-fmt tf-fmt-check tf-validate tf-bootstrap tf-init tf-plan tf-apply \
-        rulesets-apply rulesets-diff rulesets-export
+        rulesets-apply rulesets-diff rulesets-export \
+        environments-apply environments-diff environments-show
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -154,6 +156,11 @@ RELEASE_VERSION ?=
 RELEASE_COMMIT ?= $(shell git rev-parse HEAD)
 
 reports: build ## Re-run every gate in report-producing mode into reports/
+	# Emptied first: lhci writes a timestamped filename per run and never
+	# overwrites, so without this a second `make package` ships both runs'
+	# Lighthouse reports and the package's evidence becomes an accumulation
+	# rather than a description of this build.
+	rm -rf reports
 	@mkdir -p reports/html-validate reports/playwright reports/a11y reports/lighthouse
 	npm run --silent report:html > reports/html-validate/report.json
 	PLAYWRIGHT_JSON_OUTPUT_NAME=$(CURDIR)/reports/playwright/report.json npm run --silent report:e2e
@@ -268,3 +275,20 @@ rulesets-diff: ## Report drift between .github/rulesets/ and the live rulesets
 
 rulesets-export: ## Overwrite .github/rulesets/ with the live rulesets
 	$(RULESETS) export
+
+# ---------------------------------------------------------------------------
+# GITHUB DEPLOYMENT ENVIRONMENTS (the approval gate, as code)
+# ---------------------------------------------------------------------------
+# .github/environments/*.json. production carries a required reviewer, which is
+# what makes a promotion pause for a human and what makes GitHub record the
+# result as a Deployment. Not part of `ci` for the same reason as the rulesets
+# targets: writing environments needs admin rights a GITHUB_TOKEN cannot hold.
+
+environments-apply: ## Create/update the deployment environments from .github/environments/
+	$(ENVIRONMENTS) apply
+
+environments-diff: ## Report drift between .github/environments/ and GitHub
+	$(ENVIRONMENTS) diff
+
+environments-show: ## Print the live configuration of each committed environment
+	$(ENVIRONMENTS) show

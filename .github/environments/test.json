@@ -1,0 +1,16 @@
+{
+  "_comment": "The test environment. No reviewers on purpose: the point of a test environment is that a merged release reaches it without ceremony. Deployments are triggered by release.yml publishing a Release, so the workflow runs on the tag ref -- hence the tag branch policy rather than a branch one.",
+  "wait_timer": 0,
+  "prevent_self_review": false,
+  "_reviewer_logins": [],
+  "deployment_branch_policy": {
+    "protected_branches": false,
+    "custom_branch_policies": true
+  },
+  "_branch_policies": [
+    {
+      "name": "v*",
+      "type": "tag"
+    }
+  ]
+}

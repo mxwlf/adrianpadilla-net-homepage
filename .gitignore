@@ -377,6 +377,11 @@ Makefile.in
 # The provider lock file is committed on purpose: it is what makes `tofu init`
 # resolve the same provider builds for every clone and every CI run.
 !.terraform.lock.hcl
+# Written by `make tf-bootstrap`. Not secret, but it names a subscription and a
+# storage account, which is environment-specific state deliberately kept out of
+# the tree -- and a backend block cannot interpolate variables, which is why it
+# is a file at all rather than values in backend.tf.
+backend.config
 terraform.tfstate
 terraform.tfstate.backup
 *.tfvars
