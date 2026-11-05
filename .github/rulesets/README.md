@@ -150,8 +150,49 @@ that ever changes, enable it under **Settings → General → Pull Requests**, o
 gh api --method PATCH repos/OWNER/REPO -F allow_merge_commit=true
 ```
 
-This is the one part of the gate that `make rulesets-apply` cannot reproduce for
-you, because it lives on the repository rather than in a ruleset.
+This is one of two parts of the gate that `make rulesets-apply` cannot reproduce
+for you, because it lives on the repository rather than in a ruleset.
+
+## The other one: the SHA-pinning policy
+
+`.claude/rules/security.md` requires third-party actions to be pinned to full
+commit SHAs, and GitHub enforces it rather than leaving it to review. The
+setting is an Actions policy, not a ruleset, so nothing in this directory
+describes it:
+
+```sh
+# Check it
+gh api repos/OWNER/REPO/actions/permissions --jq .sha_pinning_required
+
+# Set it (send the other fields too -- a PUT replaces the whole object)
+gh api --method PUT repos/OWNER/REPO/actions/permissions \
+  -F enabled=true -f allowed_actions=all -F sha_pinning_required=true
+```
+
+A workflow that references a tag or a branch is then refused at the `Set up job`
+step, before any action executes:
+
+> The actions `actions/checkout@v7` and `lycheeverse/lychee-action@v2` are not
+> allowed in `OWNER/REPO` because all actions must be pinned to a full-length
+> commit SHA.
+
+Two consequences that are easy to be surprised by:
+
+- **Re-running a historical run fails.** A re-run replays the workflow file from
+  that run's commit, so anything from before the workflows were pinned is now
+  blocked. The run is not recoverable; push the change again on a current commit
+  instead.
+- **Keep the version comment.** Pins are written `@<sha> # v7`. Dependabot reads
+  that convention and updates the SHA and the comment together, which is what
+  stops the pins from silently rotting. Drop the comment and you keep the policy
+  but lose the updates.
+
+Enabling this is only safe once every `uses:` in the repository is already
+pinned — otherwise it blocks every run. Audit first:
+
+```sh
+git grep -hoE 'uses: *[^ ]+' -- .github/workflows/ | grep -vE '@[0-9a-f]{40}$'
+```
 
 ## What is portable between repositories
 
