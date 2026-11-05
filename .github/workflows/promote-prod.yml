@@ -148,19 +148,21 @@ jobs:
           echo "::add-mask::$token"
           echo "token=$token" >> "$GITHUB_OUTPUT"
 
-      # production_branch is set to the ref this run was dispatched from, which
-      # makes it equal to the current branch by construction. That is
-      # deliberate, and it is an assertion rather than a comparison: the action
-      # treats a deploy as a PREVIEW when it believes the current branch is not
-      # the production one, so pinning the two together forces a production-slot
-      # deploy and removes the staging-slot path entirely. The Free plan has
-      # three such slots and filling them previously broke every deploy on this
-      # app.
+      # There is no `production_branch` here, and that is worth stating because a
+      # stray copy of it used to be. It was an input of the retired
+      # Azure/static-web-apps-deploy action, which inferred "preview or
+      # production" from whether it thought the current branch was the
+      # production one. When this step became a plain `run:`, the line came with
+      # it and bash tried to execute `production_branch:` as a command -- after
+      # a completely successful deploy, so the site updated and the job still
+      # failed with exit 127, which also skipped the `record` job that advances
+      # `main`.
       #
-      # The flip side, since it can never evaluate false: if the production
-      # environment's branch policy is ever widened beyond `develop`, this will
-      # happily overwrite production from whatever branch was dispatched. The
-      # branch policy is the control here, not this input.
+      # The CLI needs no such inference: `--env production` names the slot
+      # outright, independent of any branch. The staging-slot hazard that input
+      # guarded against is also handled further upstream now --
+      # `preview_environments_enabled = false` in infra/prod/main.tf means the
+      # app cannot create one at all.
       - name: Deploy the package
         env:
           SWA_CLI_DEPLOYMENT_TOKEN: ${{ steps.swa.outputs.token }}
@@ -180,7 +182,6 @@ jobs:
           npm exec --silent -- swa deploy package/site \
             --swa-config-location "$CONFIG_DIR" \
             --env production
-          production_branch: ${{ github.ref_name }}
 
       - name: Smoke-test production
         run: |
