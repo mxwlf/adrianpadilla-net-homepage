@@ -121,6 +121,17 @@ dev: ## Run local dev server with live reload
 	npm run dev
 
 build: ## Build the site into dist/, generate the sitemap, validate the HTML
+	# dist/ is emptied first. Eleventy writes into its output directory without
+	# purging it, and assets are content-hash fingerprinted, so editing a file
+	# leaves the previous `main.<oldhash>.css` behind forever. Nothing referenced
+	# it, so nothing failed -- it simply accumulated, and `make package` folded
+	# the orphans into site/ and into the digest that is supposed to identify the
+	# release. A laptop that had built the site twice produced a different
+	# siteSha256 from CI, which gets a fresh checkout every run.
+	#
+	# This is the root cause, so it is fixed here rather than in `package`: every
+	# consumer of `build` gets a dist/ that contains only what this commit emits.
+	rm -rf dist
 	npm run build
 	node scripts/generate-sitemap.mjs
 	npm run lint:html
