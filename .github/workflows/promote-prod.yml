@@ -45,6 +45,19 @@ jobs:
       # Checked before anything slow happens, and before the approval is spent:
       # a leading "v" would otherwise produce `gh release download vv1.2.0` and
       # fail with "release not found" only after a human had already approved.
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Installs the pinned @azure/static-web-apps-cli. Deliberately a project
+      # dependency rather than `npx @latest`: Dependabot then tracks its version
+      # and osv-scan sees it in package-lock.json, which an ad-hoc npx download
+      # would bypass entirely.
+      - run: npm ci
+
       - name: Validate the version input
         env:
           VERSION: ${{ inputs.version }}
@@ -135,31 +148,40 @@ jobs:
           echo "::add-mask::$token"
           echo "token=$token" >> "$GITHUB_OUTPUT"
 
-      # production_branch is set to the ref this run was dispatched from, which
-      # makes it equal to the current branch by construction. That is
-      # deliberate, and it is an assertion rather than a comparison: the action
-      # treats a deploy as a PREVIEW when it believes the current branch is not
-      # the production one, so pinning the two together forces a production-slot
-      # deploy and removes the staging-slot path entirely. The Free plan has
-      # three such slots and filling them previously broke every deploy on this
-      # app.
+      # There is no `production_branch` here, and that is worth stating because a
+      # stray copy of it used to be. It was an input of the retired
+      # Azure/static-web-apps-deploy action, which inferred "preview or
+      # production" from whether it thought the current branch was the
+      # production one. When this step became a plain `run:`, the line came with
+      # it and bash tried to execute `production_branch:` as a command -- after
+      # a completely successful deploy, so the site updated and the job still
+      # failed with exit 127, which also skipped the `record` job that advances
+      # `main`.
       #
-      # The flip side, since it can never evaluate false: if the production
-      # environment's branch policy is ever widened beyond `develop`, this will
-      # happily overwrite production from whatever branch was dispatched. The
-      # branch policy is the control here, not this input.
+      # The CLI needs no such inference: `--env production` names the slot
+      # outright, independent of any branch. The staging-slot hazard that input
+      # guarded against is also handled further upstream now --
+      # `preview_environments_enabled = false` in infra/prod/main.tf means the
+      # app cannot create one at all.
       - name: Deploy the package
-        uses: Azure/static-web-apps-deploy@v1
-        with:
-          azure_static_web_apps_api_token: ${{ steps.swa.outputs.token }}
-          action: upload
-          skip_app_build: true
-          skip_api_build: true
-          app_location: package/site
-          api_location: ""
-          output_location: ""
-          config_file_location: package/host-config/prod
-          production_branch: ${{ github.ref_name }}
+        env:
+          SWA_CLI_DEPLOYMENT_TOKEN: ${{ steps.swa.outputs.token }}
+          CONFIG_DIR: package/host-config/prod
+        run: |
+          # --env production targets the real slot. The CLI defaults to
+          # "preview", which would create a staging environment -- the Free
+          # plan allows three, and filling them previously broke every deploy
+          # on this account.
+          #
+          # --swa-config-location is the equivalent of the action's
+          # config_file_location: host configuration stays outside site/, so
+          # the content digest is identical in every environment.
+          #
+          # Nothing is built here. The content is already compiled and its
+          # digest was verified above.
+          npm exec --silent -- swa deploy package/site \
+            --swa-config-location "$CONFIG_DIR" \
+            --env production
 
       - name: Smoke-test production
         run: |

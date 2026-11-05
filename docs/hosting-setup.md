@@ -54,15 +54,39 @@ instead of quietly de-indexing the live site.
 
 ## Known gap
 
-`globalHeaders` sets `Permissions-Policy`, `Strict-Transport-Security` and
-`Content-Security-Policy`, but **not** `X-Content-Type-Options` or
-`Referrer-Policy`, which `.claude/rules/security.md` requires. `X-Frame-Options`
-is covered in effect by the CSP's `frame-ancestors 'none'`.
-`Strict-Transport-Security` is also still at the trial value `max-age=300`
-rather than a production lifetime.
+**The config file is not the whole picture.** `globalHeaders` declares only
+`Permissions-Policy`, `Strict-Transport-Security` and `Content-Security-Policy`,
+but Azure Static Web Apps adds two of its own. What both environments actually
+return:
 
-Closing this changes live response headers, so it belongs in its own change with
-its own verification. `monitor.yml` reports the two missing headers weekly.
+```console
+$ curl -sI https://test.adrianpadilla.net/ | grep -iE 'content-type-options|referrer|strict-transport'
+strict-transport-security: max-age=300; includeSubDomains
+referrer-policy: same-origin
+x-content-type-options: nosniff
+```
+
+So `X-Content-Type-Options` and `Referrer-Policy` **are** served, by the
+platform rather than by us. An earlier version of this section claimed they were
+missing, which was read off the config file instead of off the wire. Check the
+wire.
+
+Two gaps remain, both narrower than they looked:
+
+- **`Strict-Transport-Security: max-age=300`** is the trial value. Production
+  wants something on the order of a year, and `includeSubDomains` already
+  reaches `test.`, so raising it commits both hosts.
+- **`Referrer-Policy: same-origin`** is the platform default, not the
+  `strict-origin-when-cross-origin` that `.claude/rules/security.md` asks for.
+  Declaring it in `globalHeaders` overrides the default. Either change the
+  header or change the rule — but they should agree.
+
+`X-Frame-Options` is absent and deliberately so: the CSP's
+`frame-ancestors 'none'` covers it in effect. `monitor.yml` still reports it as
+missing, which is noise worth fixing when that job is made able to fail.
+
+Each of these alters live response headers, so each belongs in its own change
+with its own verification.
 
 ## What used to be here
 

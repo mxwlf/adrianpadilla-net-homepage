@@ -29,7 +29,7 @@ tests/
 ├── unit/                    # Node built-in test runner
 ├── e2e/                     # Playwright: navigation, no-JS fallback
 └── a11y/                    # Playwright + axe-core: zero a11y violations
-infra/test/                  # The test environment, in OpenTofu
+infra/test/, infra/prod/     # Both environments, in OpenTofu (make tf-plan INFRA_ENV=prod)
 staticwebapp.config.json     # Response headers and cache rules, one source for both environments
 .github/workflows/           # CI/CD pipelines (see below)
 .github/workflows/actions.lock  # Every action pinned to a commit, incl. transitive

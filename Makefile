@@ -66,10 +66,19 @@ VENV_STAMP := $(VENV)/.requirements-installed
 RULESETS := ./scripts/github-rulesets.sh
 ENVIRONMENTS := ./scripts/github-environments.sh
 
-# OpenTofu, for the test environment in infra/test/. Not installed by
+# OpenTofu, for the environments in infra/*/. Not installed by
 # `make setup` — it is a separate toolchain, like `gh`.
 TOFU ?= tofu
-INFRA_TEST := infra/test
+# Which environment the tf-* targets act on. There are two, and they are the
+# same shape, so the directory is a variable rather than a second set of
+# targets:
+#     make tf-plan                 # test, the default
+#     make tf-plan INFRA_ENV=prod  # production
+INFRA_ENV ?= test
+INFRA_DIR := infra/$(INFRA_ENV)
+# Every environment, for the checks that should cover all of them regardless of
+# which one you are working on.
+INFRA_DIRS := $(wildcard infra/*/)
 
 .PHONY: help setup venv check-python hooks \
         dev build clean clean-venv fmt lint test a11y lighthouse ci \
@@ -121,6 +130,17 @@ dev: ## Run local dev server with live reload
 	npm run dev
 
 build: ## Build the site into dist/, generate the sitemap, validate the HTML
+	# dist/ is emptied first. Eleventy writes into its output directory without
+	# purging it, and assets are content-hash fingerprinted, so editing a file
+	# leaves the previous `main.<oldhash>.css` behind forever. Nothing referenced
+	# it, so nothing failed -- it simply accumulated, and `make package` folded
+	# the orphans into site/ and into the digest that is supposed to identify the
+	# release. A laptop that had built the site twice produced a different
+	# siteSha256 from CI, which gets a fresh checkout every run.
+	#
+	# This is the root cause, so it is fixed here rather than in `package`: every
+	# consumer of `build` gets a dist/ that contains only what this commit emits.
+	rm -rf dist
 	npm run build
 	node scripts/generate-sitemap.mjs
 	npm run lint:html
@@ -202,10 +222,12 @@ hooks: venv ## Run all pre-commit hooks against all files (same hooks as the git
 	$(PRE_COMMIT) run --all-files --show-diff-on-failure
 
 # ---------------------------------------------------------------------------
-# INFRASTRUCTURE (OpenTofu, test environment)
+# INFRASTRUCTURE (OpenTofu)
 # ---------------------------------------------------------------------------
-# infra/test/ describes test.adrianpadilla.net. See infra/test/main.tf for what
-# it deliberately does NOT manage (DNS, and the resource group).
+# infra/test/ describes test.adrianpadilla.net and infra/prod/ describes
+# adrianpadilla.net, in the same shape. See each main.tf for what it
+# deliberately does NOT manage (DNS, the resource group, and for prod the apex
+# domain binding).
 #
 # Only `tf-fmt-check` is part of `ci`. It parses the HCL, so a malformed file
 # still cannot merge, and it needs no providers and no network. `tf-validate`
@@ -220,39 +242,53 @@ hooks: venv ## Run all pre-commit hooks against all files (same hooks as the git
 check-tofu: ## Verify OpenTofu is installed
 	@command -v $(TOFU) > /dev/null 2>&1 || { \
 		echo 'Error: `$(TOFU)` was not found on your PATH.' 1>&2; \
-		echo '       The site gate needs it to check infra/test/ formatting:' 1>&2; \
+		echo '       The site gate needs it to check infra/ formatting:' 1>&2; \
 		echo '           brew install opentofu' 1>&2; \
 		echo '       See https://opentofu.org/docs/intro/install/ for other systems.' 1>&2; \
 		exit 1; \
 	}
 
-tf-fmt: check-tofu ## Rewrite infra/ into canonical OpenTofu formatting
-	$(TOFU) -chdir=$(INFRA_TEST) fmt
+tf-fmt: check-tofu ## Rewrite every infra/ environment into canonical formatting
+	$(TOFU) fmt -recursive infra
 
-tf-fmt-check: check-tofu ## Fail if infra/ is not canonically formatted
-	$(TOFU) -chdir=$(INFRA_TEST) fmt -check -diff
+# -recursive so adding an environment cannot quietly escape the gate, which a
+# per-directory invocation would have allowed. (Kept outside the recipe: a
+# tab-indented comment is handed to the shell, which echoes it.)
+tf-fmt-check: check-tofu ## Fail if any infra/ environment is not canonically formatted
+	$(TOFU) fmt -recursive -check -diff infra
 
-tf-validate: check-tofu ## Download providers and validate infra/ (no credentials needed)
-	$(TOFU) -chdir=$(INFRA_TEST) init -backend=false -input=false
-	$(TOFU) -chdir=$(INFRA_TEST) validate
+tf-validate: check-tofu ## Download providers and validate every infra/ environment (no credentials)
+	@for d in $(INFRA_DIRS); do \
+		echo "==> $$d"; \
+		$(TOFU) -chdir=$$d init -backend=false -input=false || exit 1; \
+		$(TOFU) -chdir=$$d validate || exit 1; \
+	done
 
-tf-bootstrap: ## Create the Blob Storage that holds the test environment's state (run once)
-	./scripts/tf-bootstrap.sh
+tf-bootstrap: ## Create the Blob Storage holding an environment's state (run once per environment)
+	INFRA_ENV=$(INFRA_ENV) ./scripts/tf-bootstrap.sh
 
-tf-init: check-tofu ## Initialise the backend from infra/test/backend.config
-	@test -f $(INFRA_TEST)/backend.config || { \
-		echo 'Error: $(INFRA_TEST)/backend.config does not exist.' 1>&2; \
+tf-init: check-tofu ## Initialise the backend from infra/$(INFRA_ENV)/backend.config
+	@test -f $(INFRA_DIR)/backend.config || { \
+		echo 'Error: $(INFRA_DIR)/backend.config does not exist.' 1>&2; \
 		echo '       Create the state storage first:' 1>&2; \
-		echo '           SUBSCRIPTION_ID=<guid> RESOURCE_GROUP=<name> make tf-bootstrap' 1>&2; \
+		echo '           SUBSCRIPTION_ID=<guid> RESOURCE_GROUP=<name> make tf-bootstrap INFRA_ENV=$(INFRA_ENV)' 1>&2; \
 		exit 1; \
 	}
-	$(TOFU) -chdir=$(INFRA_TEST) init -input=false -backend-config=backend.config
+	$(TOFU) -chdir=$(INFRA_DIR) init -input=false -backend-config=backend.config
 
-tf-plan: tf-init ## Show what would change in the test environment
-	$(TOFU) -chdir=$(INFRA_TEST) plan
+# TF_ARGS exists for the one operation that cannot be expressed as "apply the
+# whole configuration": a domain cutover. A hostname can be bound to only one
+# Static Web App at a time, so standing up a replacement means applying the app
+# first, moving DNS, and only then applying the binding —
+#   make tf-apply INFRA_ENV=prod TF_ARGS='-target=azurerm_static_web_app.prod'
+# It is deliberately empty by default and used by no automation.
+TF_ARGS ?=
 
-tf-apply: tf-init ## Apply the test environment
-	$(TOFU) -chdir=$(INFRA_TEST) apply
+tf-plan: tf-init ## Show what would change (INFRA_ENV=test|prod)
+	$(TOFU) -chdir=$(INFRA_DIR) plan $(TF_ARGS)
+
+tf-apply: tf-init ## Apply an environment (INFRA_ENV=test|prod)
+	$(TOFU) -chdir=$(INFRA_DIR) apply $(TF_ARGS)
 
 # ---------------------------------------------------------------------------
 # ACTIONS DEPENDENCY LOCKFILE

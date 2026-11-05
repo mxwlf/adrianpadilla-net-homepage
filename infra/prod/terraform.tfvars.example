@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+#
+# Both values are required and have no defaults. subscription_id especially:
+# a default is how a plan ends up pointed at the wrong subscription.
+
+subscription_id     = "00000000-0000-0000-0000-000000000000"
+resource_group_name = "adrianpadilla-net-homepage-prod-rg"
+
+# Optional overrides -- the defaults in variables.tf are the intended values.
+# location            = "westus2"
+# static_web_app_name = "adrianpadilla-net-homepage-prod"
+# www_domain          = "www.adrianpadilla.net"
+# apex_domain         = "adrianpadilla.net"

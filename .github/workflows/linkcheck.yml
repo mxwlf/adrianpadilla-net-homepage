@@ -20,9 +20,37 @@ jobs:
           # Treating it as one made this job fail on whichever popular URL
           # happened to throttle that run. Real 4xx/5xx still fail the job.
           # Concurrency is lowered and retries added to provoke 429s less.
+          #
+          # Two URL shapes on THIS repository are excluded, and nothing else.
+          # Both name the version being released, which does not exist yet while
+          # the release pull request is open -- the tag is created when it
+          # merges -- so both are a guaranteed 404 on exactly the pull request
+          # that introduces them, and both resolve by themselves the moment the
+          # release lands:
+          #
+          #   compare/      release-please's changelog heading,
+          #                 ## [1.0.1](.../compare/v1.0.0...v1.0.1)
+          #   releases/tag/ the footer's version link, built from version.txt,
+          #                 which release-please bumps in that same pull request
+          #
+          # A check that always fails on a predictable, harmless condition is a
+          # check people learn to ignore, which costs more than the noise.
+          #
+          # Narrow on purpose. The commit links release-please writes alongside
+          # the compare heading point at commits that already exist, so they
+          # stay checked, as does every other link in the tree -- including
+          # other projects' compare and releases URLs. The trade is that a typo
+          # in site.repository would not be caught here; the footer link is
+          # covered by an end-to-end assertion on its href instead.
+          #
+          # Repeated --exclude rather than one alternation: these args are
+          # interpolated into a shell command, and `(a|b)` would need quoting
+          # that may or may not survive.
           args: >-
             --verbose --no-progress
             --accept 200..=299,429
             --max-concurrency 4
             --max-retries 3
+            --exclude github.com/mxwlf/adrianpadilla-net-homepage/compare/
+            --exclude github.com/mxwlf/adrianpadilla-net-homepage/releases/tag/
             .

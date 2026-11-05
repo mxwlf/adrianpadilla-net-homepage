@@ -27,9 +27,10 @@ workflows:
         - 'actions/setup-node@v7.1.0'
         - 'actions/upload-artifact@v7.0.2'
     '.github/workflows/promote-prod.yml':
+        - 'actions/checkout@v7.0.1'
         - 'actions/create-github-app-token@v3.3.0'
+        - 'actions/setup-node@v7.1.0'
         - 'azure/login@v3.1.0'
-        - 'azure/static-web-apps-deploy@v1'
     '.github/workflows/release-please.yml':
         - 'actions/create-github-app-token@v3.3.0'
         - 'googleapis/release-please-action@v5.0.0'
@@ -38,7 +39,6 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v7.1.0'
         - 'azure/login@v3.1.0'
-        - 'azure/static-web-apps-deploy@v1'
     '.github/workflows/secrets.yml':
         - 'actions/checkout@v7.0.1'
         - 'gitleaks/gitleaks-action@v3.0.0'
@@ -100,11 +100,6 @@ dependencies:
         commit: 'sha1-a641126d1b8aa4d1fa005f4f92df94a3a4c4c906'
         owner_id: 6844498
         repo_id: 210798615
-    'azure/static-web-apps-deploy@v1':
-        ref: 'v1'
-        commit: 'sha1-1a947af9992250f3bc2e68ad0754c0b0c11566c9'
-        owner_id: 6844498
-        repo_id: 256014197
     'github/codeql-action@v4.39.3':
         ref: 'v4.39.3'
         commit: 'sha1-33d7b85da1a04171e211befe2c739303b9a4c066'

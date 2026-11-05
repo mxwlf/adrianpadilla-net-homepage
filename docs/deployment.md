@@ -9,11 +9,33 @@ PR ──▶ develop ──▶ release PR ──▶ merge ──▶ tag + GitHub
                                  site/ + reports/ + sbom/ + SHA256SUMS
                                       + build provenance attestation
                                                    │
-                                     ┌─────────────┴──────────────┐
-                                     ▼                            ▼
-                             test (automatic)          production (you approve)
-                         test.adrianpadilla.net          adrianpadilla.net
+                                                   ▼
+                                           test (automatic)
+                                        test.adrianpadilla.net
+                                                   ┊
+                      ┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┊┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉
+                      ┊   no automatic path crosses this line           ┊
+                      ┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┊┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉
+                                                   ┊
+                             you dispatch, then you approve
+                                                   ▼
+                                             production
+                                          adrianpadilla.net
 ```
+
+## What triggers what
+
+The most important thing to know: **nothing you merge can reach production.**
+
+| Workflow           | Trigger                      | Deploys to                                                |
+| ------------------ | ---------------------------- | --------------------------------------------------------- |
+| `release.yml`      | `release: published`         | **test** — environment has no reviewers, so it just goes  |
+| `promote-prod.yml` | **`workflow_dispatch` only** | **production** — environment requires your approval first |
+
+`promote-prod.yml` has no `push`, no `release`, no `schedule`. Production has no
+automatic trigger of any kind, and reaching it takes two deliberate acts that
+cannot be done by accident: you dispatch the workflow, and then you approve the
+run it creates.
 
 The pipeline **builds once and promotes the result**. Production serves the same
 bytes the test environment served, verified by digest, never a rebuild. This
@@ -45,12 +67,55 @@ does. See [`.github/rulesets/README.md`](../.github/rulesets/README.md).
    purpose: as separate workflows both fired on `release: published` and the
    deploy raced the build whose asset it downloads.
 
+5. **It stops there.** Merging the release pull request does not deploy to
+   production, and neither does anything else you merge. Production is a
+   separate, manual decision — see below.
+
 Verify an artifact came from this pipeline:
 
 ```sh
 gh release download v1.1.0 --pattern 'release-*.tar.gz'
 gh attestation verify --owner mxwlf release-1.1.0.tar.gz
 ```
+
+## Promoting to production
+
+Two deliberate acts, both yours:
+
+1. **Actions → Promote to production → Run workflow**, entering a version
+   without the leading `v` (e.g. `1.0.1`). The workflow validates that before
+   doing anything slow, so a typo costs seconds rather than an approval.
+2. The run **pauses** on the `production` environment until you approve it.
+   GitHub records the result as a Deployment.
+
+It then downloads that version's published asset, verifies the provenance
+attestation and the digests, deploys, smoke-tests the live site, and — only on
+success — advances `main` to the promoted commit.
+
+**The version you promote is a separate decision from the version you
+released.** That is the point of the split, and it buys two things:
+
+- A release can sit in test as long as you like before going live.
+- **Rollback is a promotion of an earlier version**, not a revert commit and a
+  rebuild. `make package` is never re-run, so an older promotion ships exactly
+  the bytes that were verified when it was built.
+
+```sh
+gh release list                          # what is promotable
+gh workflow run promote-prod.yml -f version=1.0.1
+```
+
+Two details worth knowing:
+
+- **`prevent_self_review` is `false`** on the `production` environment, and has
+  to be: on a one-maintainer repository you are both the person dispatching and
+  the only approver, so requiring a second pair of eyes would make the gate
+  unsatisfiable rather than strict. It stops an _accidental_ promotion, not a
+  determined one — the same honest limitation as the admin ruleset bypass.
+- **The first promotion is a bigger step than later ones.** Production served
+  the last Oryx-built deploy from before the old workflow was retired, so the
+  first promotion is the first time it receives a hash-verified artifact, and
+  the content digest changes.
 
 ## What a release package contains
 
@@ -89,8 +154,20 @@ it could never be merged.
 
 Create a GitHub App owned by your account:
 
-- **Repository permissions:** Contents `read & write`, Pull requests
-  `read & write`, Workflows `read & write`.
+- **Repository permissions:** Contents `read & write`, Issues `read & write`,
+  Pull requests `read & write`, Workflows `read & write`.
+  - **Issues is not optional and is easy to miss.** release-please moves the
+    release pull request's label from `autorelease: pending` to
+    `autorelease: tagged`, and labels go through the issues API. Without it the
+    action fails at "Creating 1 releases" with an _empty_ error message, having
+    created no tag and no Release — which is as unhelpful as it sounds.
+  - Workflows is for the `record` job: its `develop` → `main` merges carry
+    changes under `.github/workflows/`, which a GitHub App cannot push without
+    that permission.
+- **Adding a permission after installing requires approving it.** GitHub keeps
+  issuing tokens with the old permission set until the installation itself
+  accepts the change (Install App → the installation's settings → review the
+  request).
 - Install it on this repository only.
 - Generate a private key.
 
@@ -135,13 +212,24 @@ where OpenTofu keeps its state:
 ```sh
 SUBSCRIPTION_ID=<test subscription guid> \
 RESOURCE_GROUP=<the group from step 1> \
-make tf-bootstrap
+make tf-bootstrap INFRA_ENV=test
 ```
 
 The account is created with `--allow-shared-key-access false`, so the only way
 to reach the state is an Entra identity holding a data-plane role. There is no
 storage key to leak or rotate. The script grants your own identity, writes
-`infra/test/backend.config`, and enables blob versioning plus 30-day soft delete.
+`infra/<env>/backend.config`, and enables blob versioning plus 30-day soft delete.
+
+**Pass `INFRA_ENV`, and have the right subscription active.** Every
+environment-specific value — the `backend.config` written, the state key inside
+the container, the default storage account name — is derived from it. The script
+also refuses to run when your active `az` context is in a different tenant from
+the target subscription, which is not a theoretical guard: `az account show
+--subscription X` happily reads across tenants, but every `az ad` lookup resolves
+against the _active_ one. Bootstrapping production with a work account selected
+read that directory's signed-in user, tried to grant a foreign object id, and
+failed into a message saying the role was probably already assigned. The state
+storage came out with no data-plane role on it at all, and the script exited 0.
 
 **3. Variables.**
 
@@ -174,8 +262,159 @@ created.
 Delegating `test.adrianpadilla.net` as its own zone would avoid the manual step,
 and was rejected: it makes the hostname a zone apex, which forces Azure's
 `dns-txt-token` validation — documented as not waited on, so OpenTofu would
-report success without confirming — and a zone apex cannot hold a CNAME, while
-Azure DNS cannot point an ALIAS record at a Static Web App.
+report success without confirming — and a zone apex cannot hold a CNAME.
+
+An earlier version of this page also claimed Azure DNS cannot point an ALIAS
+record at a Static Web App. **That is wrong**, and the proof is in this zone:
+`adrianpadilla.net` itself is an ALIAS `A` record whose `targetResource` is the
+production Static Web App, which is exactly how the apex is served. The reason
+DNS stays out of OpenTofu is blast radius, not capability.
+
+### The production environment
+
+`infra/prod/` describes `adrianpadilla.net` and `www.adrianpadilla.net`, and is
+deliberately the same shape as `infra/test/`. Every target takes the
+environment, defaulting to `test`:
+
+```sh
+make tf-plan  INFRA_ENV=prod
+make tf-apply INFRA_ENV=prod
+```
+
+**Why production was rebuilt rather than imported.** The original production app
+was made by hand in the portal, and it stopped accepting token deploys: the
+content server answered `No matching Static Web App was found or the api key was
+invalid` to a freshly fetched key, in CI and from a laptop alike, while the
+OpenTofu-created test app accepted the identical command. Two rounds of
+diagnosis found no cause — only differences we could enumerate but not account
+for: a stale GitHub source-control link, no tags, an unset
+`publicNetworkAccess`. Importing would have carried whatever that was into the
+new state file, so the app was rebuilt from the configuration that demonstrably
+works. The replacement accepted the first deploy it was given.
+
+The resource group was renamed in the same move, from
+`adrianpadilla-net-homepage_group` to `adrianpadilla-net-homepage-prod-rg`, to
+match the test environment's naming.
+
+**What production adds over test.** One setting, and it has a scar behind it:
+
+```hcl
+preview_environments_enabled = false
+```
+
+The retired pull-based workflow's header recorded staging environments that
+Azure created from branch pushes and never tore down. They filled the Free
+plan's three environment slots and broke production deploys outright. Promotion
+always deploys `--env production`, so the ability to create a preview
+environment is pure downside here. See
+[Preview environments](#preview-environments-do-not-re-enable-them-casually).
+
+**What is not in `infra/prod/`.** No DNS, for the blast-radius reason above. And
+no apex custom domain binding: an apex must validate by `dns-txt-token`, which
+the provider documents as a path it does not wait on, so OpenTofu would mark it
+created without confirming. Only `cname-delegation` is polled, so `www` is
+managed here and the apex binding is made by hand, once.
+
+#### Runbook: moving the live domains to a new Static Web App
+
+A hostname can be bound to only one Static Web App at a time, so a cutover
+cannot be done with a single apply, and there is no zero-downtime path on the
+Free SKU. Budget a few minutes, and run it in this order.
+
+Lower both TTLs **first**. This does nothing for resolvers that have already
+cached the records — they hold the old value for up to the previous TTL, an hour
+in our case — but it makes the next cutover, and any correction you need in the
+following minutes, cheap:
+
+```sh
+DNS_SUB=42cb3155-85e5-4646-8110-a3aa3d02460d   # the connectivity subscription
+az network dns record-set a update     --subscription $DNS_SUB -g dns-prod \
+  -z adrianpadilla.net -n @   --set ttl=60
+az network dns record-set cname update --subscription $DNS_SUB -g dns-prod \
+  -z adrianpadilla.net -n www --set ttl=60
+```
+
+1. **Create the app only.** The `www` binding would fail on a first pass,
+   because the hostname is still held by the old app:
+
+   ```sh
+   make tf-apply INFRA_ENV=prod TF_ARGS='-target=azurerm_static_web_app.prod'
+   tofu -chdir=infra/prod output dns_records_to_create
+   ```
+
+2. **Deploy and verify on the Azure hostname, before touching DNS.** This is the
+   step that makes the cutover safe: if the new app cannot serve the release,
+   you find out while the live site is still untouched.
+
+   ```sh
+   gh release download v<version> --dir /tmp/cut/dl
+   gh attestation verify /tmp/cut/dl/release-<version>.tar.gz --owner mxwlf
+   tar -xzf /tmp/cut/dl/release-<version>.tar.gz -C /tmp/cut/package
+   ( cd /tmp/cut/package && shasum -a 256 -c SHA256SUMS )
+
+   TOKEN=$(az staticwebapp secrets list --subscription "$PROD_SUB" \
+     --resource-group adrianpadilla-net-homepage-prod-rg \
+     --name adrianpadilla-net-homepage-prod --query properties.apiKey -o tsv)
+
+   npx @azure/static-web-apps-cli deploy /tmp/cut/package/site \
+     --swa-config-location /tmp/cut/package/host-config/prod \
+     --deployment-token "$TOKEN" --env production
+   ```
+
+   Then check the `*.azurestaticapps.net` hostname it prints: 200, the expected
+   footer version, a canonical pointing at `adrianpadilla.net`, and **no**
+   `X-Robots-Tag` (that header belongs to test alone).
+
+3. **Release the hostnames from the old app.** Azure warns that this takes up to
+   15 minutes to propagate, and the new binding will be rejected until it has.
+   Wait for the old app to report zero custom domains rather than guessing:
+
+   ```sh
+   for d in adrianpadilla.net www.adrianpadilla.net; do
+     az staticwebapp hostname delete --name <old app> \
+       --resource-group <old rg> --hostname "$d" --yes --no-wait
+   done
+   ```
+
+4. **Repoint DNS.** The apex is an ALIAS `A` record targeting the Static Web App
+   _resource_; `www` is an ordinary CNAME to its Azure hostname:
+
+   ```sh
+   az network dns record-set a update --subscription $DNS_SUB -g dns-prod \
+     -z adrianpadilla.net -n @ --target-resource "$NEW_SWA_RESOURCE_ID"
+   az network dns record-set cname set-record --subscription $DNS_SUB -g dns-prod \
+     -z adrianpadilla.net -n www --cname "$NEW_DEFAULT_HOST_NAME"
+   ```
+
+5. **Bind the hostnames on the new app.** `www` through OpenTofu, the apex by
+   hand:
+
+   ```sh
+   make tf-apply INFRA_ENV=prod          # binds www by cname-delegation
+   az staticwebapp hostname set --name adrianpadilla-net-homepage-prod \
+     --resource-group adrianpadilla-net-homepage-prod-rg \
+     --hostname adrianpadilla.net
+   ```
+
+   Both end up with `validationMethod: None`, because the ALIAS and CNAME
+   records are themselves the proof of ownership — no TXT token is involved when
+   the zone is in Azure DNS.
+
+6. **Update the repository variables and the RBAC**, or the next promotion
+   deploys to the app you just retired:
+
+   ```sh
+   gh variable set PROD_RESOURCE_GROUP      --body 'adrianpadilla-net-homepage-prod-rg'
+   gh variable set PROD_STATIC_WEB_APP_NAME --body 'adrianpadilla-net-homepage-prod'
+   ```
+
+   The deploy identity needs `Contributor` on the new group. Leave its
+   assignment on the old group until the old app is deleted, then remove both
+   together.
+
+7. **Keep the old app for a few days.** It is the rollback: rebinding the
+   domains to it is the same procedure in reverse. Delete it, and its role
+   assignment, once the new one has proven itself.
 
 ### The deploy identity, with no stored credentials
 
@@ -195,9 +434,35 @@ gate would be decorative.
 So: two apps, each trusted for exactly one environment and granted rights in
 exactly one subscription.
 
+**Do not hand-write the subject.** This repository has GitHub's **immutable
+subject claims** enabled, so the token does not present
+`repo:OWNER/REPO:environment:test` — it embeds the numeric owner and repository
+ids:
+
+```console
+$ gh api repos/mxwlf/adrianpadilla-net-homepage/actions/oidc/customization/sub
+{"use_default":true,"use_immutable_subject":true,
+ "sub_claim_prefix":"repo:mxwlf@2484521/adrianpadilla-net-homepage@1314357660"}
+```
+
+A credential written in the documented `repo:OWNER/REPO:...` form is simply
+never matched, and Entra says so in the only place you will see it — the deploy
+job:
+
+> AADSTS700213: No matching federated identity record found for presented
+> assertion subject `repo:mxwlf@2484521/adrianpadilla-net-homepage@1314357660:environment:test`
+
+That is worth matching rather than turning off: embedding the ids is what stops
+a deleted-and-recreated repository of the same name inheriting this trust. Read
+the prefix from the API below rather than typing it, so a rename or a transfer
+cannot silently invalidate it.
+
 ```sh
 TENANT=6dbf3e28-8c7c-41fe-b397-a347b389a329
 REPO=mxwlf/adrianpadilla-net-homepage
+
+# The prefix GitHub will actually present. Never hand-written.
+SUB_PREFIX=$(gh api "repos/${REPO}/actions/oidc/customization/sub" --jq .sub_claim_prefix)
 
 # $1 = environment name, $2 = subscription guid, $3 = resource group
 make_identity() {
@@ -208,7 +473,7 @@ make_identity() {
   az ad app federated-credential create --id "$app_id" --parameters "{
     \"name\": \"github-env-$1\",
     \"issuer\": \"https://token.actions.githubusercontent.com\",
-    \"subject\": \"repo:${REPO}:environment:$1\",
+    \"subject\": \"${SUB_PREFIX}:environment:$1\",
     \"audiences\": [\"api://AzureADTokenExchange\"]
   }" >/dev/null
 
@@ -224,7 +489,7 @@ make_identity() {
 }
 
 make_identity test       '<test subscription guid>'                '<test resource group>'
-make_identity production '0af99616-1635-473a-8cbb-9ceb60f73388'    'adrianpadilla-net-homepage_group'
+make_identity production '0af99616-1635-473a-8cbb-9ceb60f73388'    'adrianpadilla-net-homepage-prod-rg'
 ```
 
 The two client ids are published as separate variables
@@ -273,25 +538,22 @@ Reviewers are committed as **logins** and resolved to numeric ids at apply time,
 because user ids are account-scoped — the same portability rule
 `scripts/github-rulesets.sh` documents.
 
-### Production promotion, and the `main` bypass
+### Production: variables and the `main` bypass
 
-Promote with **Actions → Promote to production → Run workflow**, giving a
-version. The run pauses for the `production` environment's required reviewer;
-approving it is the explicit OK, and GitHub records the result as a Deployment.
-
-Any published version can be promoted, so **a rollback is a promotion of an
-earlier version** — not a revert commit and a rebuild.
+One-time setup only. How to actually promote is in
+[Promoting to production](#promoting-to-production) above; this section covers
+what has to exist before the first one works.
 
 Production needs its own repository variables:
 
 ```sh
 gh variable set PROD_SUBSCRIPTION_ID     --body '0af99616-1635-473a-8cbb-9ceb60f73388'
-gh variable set PROD_RESOURCE_GROUP      --body 'adrianpadilla-net-homepage_group'
-gh variable set PROD_STATIC_WEB_APP_NAME --body 'adrianpadilla-net-homepage'
+gh variable set PROD_RESOURCE_GROUP      --body 'adrianpadilla-net-homepage-prod-rg'
+gh variable set PROD_STATIC_WEB_APP_NAME --body 'adrianpadilla-net-homepage-prod'
 ```
 
 The deploy identity also needs `Contributor` on that resource group, and a
-federated credential for `repo:mxwlf/adrianpadilla-net-homepage:environment:production`
+federated credential for `<sub_claim_prefix>:environment:production` (see the immutable-subject note above)
 (created alongside the test one above).
 
 **The one control this design costs.** `main` accepts only reviewed pull
@@ -299,10 +561,13 @@ requests, and the `record` job advances it by calling the merges API, which the
 ruleset refuses. For it to work, the release GitHub App must be listed in
 `main-protection.json`'s `bypass_actors` with `bypass_mode: "always"`:
 
+The bypass actor's `actor_id` is the App's id -- the same number as
+`vars.RELEASE_APP_ID`, 5622267 here, with `actor_type: "Integration"`. Note that
+`gh api repos/OWNER/REPO/installation` cannot tell you this: that endpoint needs
+a JWT signed by the App's private key, and answers 401 to a user token.
+
 ```sh
-# APP_ID here is the App's *installation* integration id, not the app id used
-# by create-github-app-token. Find it with:
-gh api "repos/mxwlf/adrianpadilla-net-homepage/installation" --jq '.app_id'
+gh variable get RELEASE_APP_ID   # the id to use as actor_id
 ```
 
 Add it through **Settings → Rules → main-protection → Bypass list**, then run
