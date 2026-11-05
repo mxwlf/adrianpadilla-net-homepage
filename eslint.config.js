@@ -31,6 +31,20 @@ export default [
   {
     // `.venv/` holds the pinned pre-commit tooling (`make setup`); some of its
     // Python packages vendor browser JS that is not ours to lint.
-    ignores: ["dist/", "node_modules/", ".cache/", ".venv/", ".lighthouseci/"],
+    //
+    // `release/`, `reports/` and `sbom/` are release-packaging output. Linting
+    // them would re-lint copies of src/assets/js under the wrong config: the
+    // browser-globals block above is keyed on the src path, so the fingerprinted
+    // copies in release/site/assets/js would fail `no-undef` on `window`.
+    ignores: [
+      "dist/",
+      "node_modules/",
+      ".cache/",
+      ".venv/",
+      ".lighthouseci/",
+      "release/",
+      "reports/",
+      "sbom/",
+    ],
   },
 ];

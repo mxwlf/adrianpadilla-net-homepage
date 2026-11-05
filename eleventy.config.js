@@ -77,10 +77,15 @@ export default function (eleventyConfig) {
   // so this one lands there rather than under the fingerprinted /assets/.
   eleventyConfig.addPassthroughCopy({ "src/favicon.ico": "favicon.ico" });
 
-  // SWA reads its config from the root of output_location, not the repo root.
-  eleventyConfig.addPassthroughCopy({
-    "staticwebapp.config.json": "staticwebapp.config.json",
-  });
+  // staticwebapp.config.json is deliberately NOT copied into the output.
+  //
+  // It used to be, because the old deploy handed Azure the repo root and let
+  // Oryx rebuild, and SWA reads its config from the root of output_location.
+  // Deployment now uploads a prebuilt package and selects the host config with
+  // the action's `config_file_location` input, so the config lives outside
+  // site/ and each environment gets its own — see scripts/release-package.mjs.
+  // Copying it here would put production's headers inside the content digest
+  // that is supposed to be identical in every environment.
 
   // Resolves a source asset URL to the URL it was emitted under. Paths that
   // were not fingerprinted — a dev build, or a reference to a file absent from
