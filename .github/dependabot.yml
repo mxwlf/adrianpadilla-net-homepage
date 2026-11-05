@@ -1,18 +1,73 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# Dependabot configuration.
+#
+# Full reference:
+# https://docs.github.com/code-security/reference/supply-chain-security/dependabot-options-reference
+#
+# WHY EVERYTHING IS GROUPED
+# -------------------------
+# Dependabot's default is one pull request per dependency. That produced eight
+# open at once, and two of them could never have been merged at all:
+#
+#   - stylelint 16 -> 17 failed `npm ci` with ERESOLVE, because
+#     stylelint-config-standard 37 declares a peer of stylelint ^16.13.0. The
+#     fix was to raise both together -- which one-pull-request-per-dependency
+#     makes structurally impossible, so that pull request was unmergeable from
+#     the moment it opened and would have stayed that way forever.
+#   - html-validate 9 -> 11 needed a Node bump that was not in its own diff.
+#
+# So grouping here is not only about noise. Packages that must move in lockstep
+# can only be verified together, and a group is the only way Dependabot will
+# put them in one pull request.
+#
+# `patterns: ["*"]` means every update for an ecosystem lands in a single pull
+# request, including majors.
+#
+# THE TRADE, STATED PLAINLY: one failing update fails the whole group. If a
+# major bump breaks the build, nothing in that group merges until it is dealt
+# with -- whereas separate pull requests would have let the harmless ones
+# through. That is the deliberate choice here; the alternative is to split
+# majors out, by giving the catch-all group `update-types: ["minor", "patch"]`
+# and letting majors fall through to individual pull requests.
+#
+# TARGET BRANCH: deliberately not set. Dependabot targets the repository's
+# default branch, so when the default moves to `develop` it follows without a
+# change here. Setting `target-branch` would pin it to one branch and silently
+# stop tracking the default.
+#
+# A dependency matching several groups joins the FIRST one it matches, so order
+# matters if narrower groups are ever added above the catch-alls.
+#
+# Groups cannot span ecosystems: they are defined per `updates:` entry. Two
+# pull requests a week -- one npm, one Actions -- is the floor, and GitHub
+# offers no way to combine them.
 
 version: 2
 updates:
-  # package.json / package-lock.json at the repo root
+  # package.json / package-lock.json at the repo root. All devDependencies —
+  # the site ships no runtime dependencies.
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      npm:
+        applies-to: version-updates
+        patterns: ["*"]
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
 
-  # Action versions pinned in .github/workflows/
+  # Action versions in .github/workflows/. These are pinned to commit SHAs with
+  # the version in a trailing comment; Dependabot understands that convention
+  # and updates both together.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      actions:
+        applies-to: version-updates
+        patterns: ["*"]
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
