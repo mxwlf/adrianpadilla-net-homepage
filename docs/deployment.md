@@ -89,8 +89,20 @@ it could never be merged.
 
 Create a GitHub App owned by your account:
 
-- **Repository permissions:** Contents `read & write`, Pull requests
-  `read & write`, Workflows `read & write`.
+- **Repository permissions:** Contents `read & write`, Issues `read & write`,
+  Pull requests `read & write`, Workflows `read & write`.
+  - **Issues is not optional and is easy to miss.** release-please moves the
+    release pull request's label from `autorelease: pending` to
+    `autorelease: tagged`, and labels go through the issues API. Without it the
+    action fails at "Creating 1 releases" with an _empty_ error message, having
+    created no tag and no Release — which is as unhelpful as it sounds.
+  - Workflows is for the `record` job: its `develop` → `main` merges carry
+    changes under `.github/workflows/`, which a GitHub App cannot push without
+    that permission.
+- **Adding a permission after installing requires approving it.** GitHub keeps
+  issuing tokens with the old permission set until the installation itself
+  accepts the change (Install App → the installation's settings → review the
+  request).
 - Install it on this repository only.
 - Generate a private key.
 
@@ -195,9 +207,35 @@ gate would be decorative.
 So: two apps, each trusted for exactly one environment and granted rights in
 exactly one subscription.
 
+**Do not hand-write the subject.** This repository has GitHub's **immutable
+subject claims** enabled, so the token does not present
+`repo:OWNER/REPO:environment:test` — it embeds the numeric owner and repository
+ids:
+
+```console
+$ gh api repos/mxwlf/adrianpadilla-net-homepage/actions/oidc/customization/sub
+{"use_default":true,"use_immutable_subject":true,
+ "sub_claim_prefix":"repo:mxwlf@2484521/adrianpadilla-net-homepage@1314357660"}
+```
+
+A credential written in the documented `repo:OWNER/REPO:...` form is simply
+never matched, and Entra says so in the only place you will see it — the deploy
+job:
+
+> AADSTS700213: No matching federated identity record found for presented
+> assertion subject `repo:mxwlf@2484521/adrianpadilla-net-homepage@1314357660:environment:test`
+
+That is worth matching rather than turning off: embedding the ids is what stops
+a deleted-and-recreated repository of the same name inheriting this trust. Read
+the prefix from the API below rather than typing it, so a rename or a transfer
+cannot silently invalidate it.
+
 ```sh
 TENANT=6dbf3e28-8c7c-41fe-b397-a347b389a329
 REPO=mxwlf/adrianpadilla-net-homepage
+
+# The prefix GitHub will actually present. Never hand-written.
+SUB_PREFIX=$(gh api "repos/${REPO}/actions/oidc/customization/sub" --jq .sub_claim_prefix)
 
 # $1 = environment name, $2 = subscription guid, $3 = resource group
 make_identity() {
@@ -208,7 +246,7 @@ make_identity() {
   az ad app federated-credential create --id "$app_id" --parameters "{
     \"name\": \"github-env-$1\",
     \"issuer\": \"https://token.actions.githubusercontent.com\",
-    \"subject\": \"repo:${REPO}:environment:$1\",
+    \"subject\": \"${SUB_PREFIX}:environment:$1\",
     \"audiences\": [\"api://AzureADTokenExchange\"]
   }" >/dev/null
 
@@ -291,7 +329,7 @@ gh variable set PROD_STATIC_WEB_APP_NAME --body 'adrianpadilla-net-homepage'
 ```
 
 The deploy identity also needs `Contributor` on that resource group, and a
-federated credential for `repo:mxwlf/adrianpadilla-net-homepage:environment:production`
+federated credential for `<sub_claim_prefix>:environment:production` (see the immutable-subject note above)
 (created alongside the test one above).
 
 **The one control this design costs.** `main` accepts only reviewed pull
