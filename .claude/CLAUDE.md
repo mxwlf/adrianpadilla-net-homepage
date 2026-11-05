@@ -44,9 +44,14 @@
 - A required check's `context` is a workflow job id — renaming one without the
   other makes PRs hang forever. A job with a `paths:` filter must never be
   required, for the same reason.
-- `infra/test/` describes the test environment in OpenTofu. It deliberately owns
-  no DNS: the `adrianpadilla.net` zone also serves the live site and several
-  other services, so the deploy identity holds no DNS permissions at all.
+- `infra/test/` and `infra/prod/` describe both environments in OpenTofu, in the
+  same shape. Every `tf-*` target takes `INFRA_ENV`, defaulting to `test`:
+  `make tf-plan INFRA_ENV=prod`. Neither owns any DNS — the
+  `adrianpadilla.net` zone also serves several unrelated services, so the deploy
+  identity holds no DNS permissions at all and the records are made by hand.
+  Production's apex binding is likewise manual, because only `cname-delegation`
+  validation is polled by the provider. The cutover runbook is in
+  @docs/deployment.md.
 
 ## References
 
