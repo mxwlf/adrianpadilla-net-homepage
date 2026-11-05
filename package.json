@@ -24,6 +24,7 @@
   "devDependencies": {
     "@11ty/eleventy": "^3.1.7",
     "@axe-core/playwright": "^4.14.0",
+    "@azure/static-web-apps-cli": "2.1.0",
     "@cyclonedx/cyclonedx-npm": "6.0.1",
     "@eslint/js": "^10.0.1",
     "@lhci/cli": "^0.15.1",
@@ -42,6 +43,8 @@
     "qs": "^6.17.0",
     "tmp": "^0.2.7",
     "uuid": "^11.1.1",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "adm-zip": "^0.6.1",
+    "deepmerge": "4.1.2"
   }
 }

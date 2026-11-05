@@ -113,6 +113,21 @@ jobs:
       contents: read
       id-token: write # workload identity federation to Azure
     steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Installs the pinned @azure/static-web-apps-cli. Deliberately a project
+      # dependency rather than `npx @latest`: Dependabot then tracks its version
+      # and osv-scan sees it in package-lock.json, which an ad-hoc npx download
+      # would bypass entirely.
+      - run: npm ci
+
       - name: Download the release package
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -178,20 +193,24 @@ jobs:
           echo "token=$token" >> "$GITHUB_OUTPUT"
 
       - name: Deploy the package
-        uses: Azure/static-web-apps-deploy@v1
-        with:
-          azure_static_web_apps_api_token: ${{ steps.swa.outputs.token }}
-          action: upload
-          # Already built. Oryx must not run: a rebuild here would discard the
-          # verified bytes and defeat the whole pipeline.
-          skip_app_build: true
-          skip_api_build: true
-          app_location: package/site
-          api_location: ""
-          output_location: ""
-          # Host configuration is infrastructure, not content, so it lives
-          # outside site/ and the environment picks its own.
-          config_file_location: package/host-config/test
+        env:
+          SWA_CLI_DEPLOYMENT_TOKEN: ${{ steps.swa.outputs.token }}
+          CONFIG_DIR: package/host-config/test
+        run: |
+          # --env production targets the real slot. The CLI defaults to
+          # "preview", which would create a staging environment -- the Free
+          # plan allows three, and filling them previously broke every deploy
+          # on this account.
+          #
+          # --swa-config-location is the equivalent of the action's
+          # config_file_location: host configuration stays outside site/, so
+          # the content digest is identical in every environment.
+          #
+          # Nothing is built here. The content is already compiled and its
+          # digest was verified above.
+          npm exec --silent -- swa deploy package/site \
+            --swa-config-location "$CONFIG_DIR" \
+            --env production
 
       - name: Smoke-test the deployed site
         env:
