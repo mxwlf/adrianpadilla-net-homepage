@@ -19,9 +19,10 @@
 // `site/` deliberately excludes staticwebapp.config.json. Host configuration is
 // infrastructure, not content: it is selected at deploy time through the
 // action's `config_file_location` input, so the content digest stays identical
-// across environments. The committed staticwebapp.config.json is still copied
-// into dist/ by eleventy.config.js, because the current production deploy reads
-// it from there; this script drops it from the package rather than from dist/.
+// across environments. eleventy.config.js no longer copies it into the output
+// either, so the exclusion below is an invariant guard rather than a filter --
+// if the passthrough is ever restored, the package still cannot pick up one
+// environment's headers.
 
 import { createHash } from "node:crypto";
 import {
@@ -46,8 +47,8 @@ const BASE_CONFIG_FILE = path.join(ROOT, "staticwebapp.config.json");
 const LOCKFILE = path.join(ROOT, "package-lock.json");
 const OUT_DIR = path.join(ROOT, "release");
 
-// Present in dist/ for the current production deploy, but not part of the
-// environment-neutral content the package ships.
+// Never part of the environment-neutral content the package ships, whatever
+// happens to end up in dist/.
 const SITE_EXCLUDED = new Set(["staticwebapp.config.json"]);
 
 const MANIFEST_FIELDS = [

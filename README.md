@@ -153,18 +153,18 @@ See `docs/hosting-setup.md` for full setup instructions.
 
 All workflows run via GitHub Actions:
 
-| Workflow                      | Trigger                      | Purpose                                         | Blocks merge |
-| ----------------------------- | ---------------------------- | ----------------------------------------------- | ------------ |
-| `ci.yml`                      | PR, push to `main`/`develop` | `make ci` — hooks + lint + build + test         | yes (`ci`)   |
-| `lighthouse.yml`              | PR, push to `main`/`develop` | Lighthouse budgets (perf ≥0.90, a11y/SEO ≥0.95) | yes          |
-| `security.yml`                | PR, push, weekly             | CodeQL SAST, OSV-Scanner, dependency review     | partly¹      |
-| `secrets.yml`                 | PR, push, weekly             | Gitleaks secret scanning                        | yes          |
-| `linkcheck.yml`               | PR, weekly                   | Broken link detection                           | no²          |
-| `infra.yml`                   | PR, push (infra paths)       | `make tf-validate` — OpenTofu, no credentials   | no³          |
-| `release-please.yml`          | Push to `develop`            | Version + changelog from Conventional Commits   | n/a          |
-| `release.yml`                 | Release published            | Build + attest the package, then deploy to test | n/a          |
-| `azure-static-web-apps-*.yml` | Push to `main`               | Deploy to Azure Static Web Apps                 | n/a          |
-| `monitor.yml`                 | Weekly                       | Production Lighthouse + security header checks  | n/a          |
+| Workflow             | Trigger                      | Purpose                                         | Blocks merge |
+| -------------------- | ---------------------------- | ----------------------------------------------- | ------------ |
+| `ci.yml`             | PR, push to `main`/`develop` | `make ci` — hooks + lint + build + test         | yes (`ci`)   |
+| `lighthouse.yml`     | PR, push to `main`/`develop` | Lighthouse budgets (perf ≥0.90, a11y/SEO ≥0.95) | yes          |
+| `security.yml`       | PR, push, weekly             | CodeQL SAST, OSV-Scanner, dependency review     | partly¹      |
+| `secrets.yml`        | PR, push, weekly             | Gitleaks secret scanning                        | yes          |
+| `linkcheck.yml`      | PR, weekly                   | Broken link detection                           | no²          |
+| `infra.yml`          | PR, push (infra paths)       | `make tf-validate` — OpenTofu, no credentials   | no³          |
+| `release-please.yml` | Push to `develop`            | Version + changelog from Conventional Commits   | n/a          |
+| `release.yml`        | Release published            | Build + attest the package, then deploy to test | n/a          |
+| `promote-prod.yml`   | Manual dispatch              | Promote a version to production, after approval | n/a          |
+| `monitor.yml`        | Weekly                       | Production Lighthouse + security header checks  | n/a          |
 
 ¹ `dependency-review` and `osv-scan` block; `codeql` does not, because its own
 `if:` excludes pull requests. ² Lychee resolves external URLs, so it fails on

@@ -1,0 +1,269 @@
+# ---------------------------------------------------------------------------
+# Promote to production — the same package the test environment ran
+# ---------------------------------------------------------------------------
+# Dispatched by hand with a version. The `production` environment carries a
+# required reviewer, so the run pauses until a human approves it and GitHub
+# records the outcome as a Deployment.
+#
+# Any published version can be promoted, which is what makes rollback a
+# promotion of an earlier version rather than a revert commit and a rebuild.
+#
+# NOTHING IS BUILT HERE. The archive is downloaded, its digests verified, and
+# site/ uploaded. The only difference from the test deploy is
+# config_file_location, because host configuration is infrastructure and content
+# is the artifact.
+
+name: Promote to production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to promote, without a leading v (e.g. 1.2.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote-prod
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+      url: https://adrianpadilla.net
+    permissions:
+      contents: read
+      id-token: write # workload identity federation to Azure
+    outputs:
+      site-digest: ${{ steps.verify.outputs.site-digest }}
+    steps:
+      # Checked before anything slow happens, and before the approval is spent:
+      # a leading "v" would otherwise produce `gh release download vv1.2.0` and
+      # fail with "release not found" only after a human had already approved.
+      - name: Validate the version input
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          case "$VERSION" in
+            v*)
+              echo "::error::drop the leading v — pass 1.2.0, not $VERSION"
+              exit 1
+              ;;
+          esac
+          printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$' || {
+            echo "::error::'$VERSION' is not a semantic version"
+            exit 1
+          }
+
+      - name: Download the release package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p package
+          gh release download "v${VERSION}" \
+            --pattern 'release-*.tar.gz' \
+            --pattern 'SHA256SUMS' \
+            --pattern 'manifest.json' \
+            --dir .
+          tar -xzf "release-${VERSION}.tar.gz" -C package
+
+      # The real gate before production, and it has to be the attestation rather
+      # than the digests: SHA256SUMS and manifest.json are Release assets too,
+      # so an identity able to replace the archive could replace all three and
+      # they would still agree with each other. Only the signed provenance ties
+      # the archive back to this repository's Release workflow.
+      - name: Verify the build provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh attestation verify "release-${VERSION}.tar.gz" \
+            --repo "${{ github.repository }}" \
+            --signer-workflow "${{ github.repository }}/.github/workflows/release.yml"
+
+      - name: Verify the package
+        id: verify
+        working-directory: package
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          sha256sum -c SHA256SUMS
+
+          manifest_version=$(jq -r .version manifest.json)
+          if [ "$manifest_version" != "$VERSION" ]; then
+            echo "::error::manifest says version '$manifest_version', asked to promote '$VERSION'"
+            exit 1
+          fi
+
+          # Constrained before it reaches $GITHUB_OUTPUT. `jq -r` emits raw
+          # newlines, so an unconstrained value could write extra lines and
+          # forge other job outputs.
+          digest=$(jq -r .siteSha256 manifest.json)
+          printf '%s' "$digest" | grep -qE '^[0-9a-f]{64}$' || {
+            echo "::error::siteSha256 is not a sha256 digest"
+            exit 1
+          }
+
+          echo "site-digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "promoting ${VERSION}, site digest ${digest}"
+          cat manifest.json >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ vars.PROD_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.PROD_SUBSCRIPTION_ID }}
+
+      - name: Fetch the deployment token
+        id: swa
+        env:
+          NAME: ${{ vars.PROD_STATIC_WEB_APP_NAME }}
+          GROUP: ${{ vars.PROD_RESOURCE_GROUP }}
+        run: |
+          token=$(az staticwebapp secrets list \
+            --name "$NAME" \
+            --resource-group "$GROUP" \
+            --query 'properties.apiKey' \
+            --output tsv)
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      # production_branch is set to the ref this run was dispatched from, which
+      # makes it equal to the current branch by construction. That is
+      # deliberate, and it is an assertion rather than a comparison: the action
+      # treats a deploy as a PREVIEW when it believes the current branch is not
+      # the production one, so pinning the two together forces a production-slot
+      # deploy and removes the staging-slot path entirely. The Free plan has
+      # three such slots and filling them previously broke every deploy on this
+      # app.
+      #
+      # The flip side, since it can never evaluate false: if the production
+      # environment's branch policy is ever widened beyond `develop`, this will
+      # happily overwrite production from whatever branch was dispatched. The
+      # branch policy is the control here, not this input.
+      - name: Deploy the package
+        uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.swa.outputs.token }}
+          action: upload
+          skip_app_build: true
+          skip_api_build: true
+          app_location: package/site
+          api_location: ""
+          output_location: ""
+          config_file_location: package/host-config/prod
+          production_branch: ${{ github.ref_name }}
+
+      - name: Smoke-test production
+        run: |
+          echo "GET https://adrianpadilla.net/"
+          headers=$(curl -fsS --retry 6 --retry-delay 10 --retry-all-errors -D - -o /dev/null https://adrianpadilla.net/)
+          echo "$headers"
+
+          # The inverse of the test environment's assertion: production must be
+          # indexable. If noindex is here, the wrong host-config shipped, and
+          # the live site would quietly fall out of search results.
+          if echo "$headers" | grep -qi '^x-robots-tag:.*noindex'; then
+            echo "::error::production is serving X-Robots-Tag: noindex — the test host-config was deployed"
+            exit 1
+          fi
+
+          echo "$headers" | grep -qi '^content-security-policy:' || {
+            echo "::error::no Content-Security-Policy — host-config was not applied"
+            exit 1
+          }
+
+      - name: Assert no staging environments were created
+        env:
+          NAME: ${{ vars.PROD_STATIC_WEB_APP_NAME }}
+          GROUP: ${{ vars.PROD_RESOURCE_GROUP }}
+        run: |
+          extra=$(az staticwebapp environment list \
+            --name "$NAME" \
+            --resource-group "$GROUP" \
+            --query "[?buildId!='default'].buildId" \
+            --output tsv)
+          if [ -n "$extra" ]; then
+            echo "::error::promotion created staging environments: $extra"
+            echo 'The Free plan allows three. Delete with: az staticwebapp environment delete'
+            exit 1
+          fi
+          echo "no staging environments — production slot only"
+
+  # A separate job on purpose. By the time this runs production is already
+  # updated, so a failure here means "main is stale", not "the deploy failed" --
+  # and the two should not look alike in the run list.
+  record:
+    needs: promote
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Mint a short-lived app token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      # main is the record of what is live, so it moves only after a successful
+      # promotion.
+      #
+      # This needs the app listed in main-protection.json's bypass_actors with
+      # bypass_mode "always": main otherwise accepts only reviewed pull
+      # requests, and that is deliberate. See .github/rulesets/README.md.
+      #
+      # Note what the bypass means for signatures, because it is easy to get
+      # wrong: GitHub does sign the merge commit it creates here, but
+      # required_signatures checks every commit a push introduces, and this
+      # merge brings release-please's unsigned commits onto main as ancestors.
+      # It succeeds because the bypass skips required_signatures along with the
+      # rest of the ruleset -- not because everything it carries is signed. So
+      # main is not "fully signed" once this job is installed; what stays true
+      # is that no HUMAN can reach main except through a reviewed pull request
+      # whose commits are signed. If you want the stronger property, drop this
+      # job: the release tag and the Deployment record already state what is
+      # live. docs/deployment.md covers that trade.
+      - name: Advance main to the promoted commit
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          # Distinguished by status code, not by the body. A no-op merge returns
+          # 204 with an EMPTY body, so matching on text like "Already merged"
+          # can never fire -- and 204 is a success, so the happy-path branch
+          # would have claimed main advanced when nothing happened. Promoting an
+          # older version for a rollback takes that path every time, since its
+          # tag is already an ancestor of main.
+          code=$(gh api --method POST "repos/${GH_REPO}/merges" \
+            -f base=main \
+            -f head="v${VERSION}" \
+            -f commit_message="chore: record v${VERSION} in production" \
+            --include --silent 2>/dev/null |
+            sed -n '1s#.* \([0-9][0-9][0-9]\).*#\1#p') || true
+
+          case "$code" in
+            201)
+              echo "main advanced to v${VERSION}"
+              ;;
+            204)
+              echo "main already contains v${VERSION} — nothing to record"
+              ;;
+            403)
+              echo "::error::main refused the merge (403). The release App is not a bypass actor on main-protection."
+              echo 'Add it with bypass_mode "always", then run `make rulesets-export`. See docs/deployment.md.'
+              exit 1
+              ;;
+            *)
+              echo "::error::could not advance main (HTTP ${code:-unknown})."
+              exit 1
+              ;;
+          esac
