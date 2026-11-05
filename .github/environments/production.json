@@ -1,0 +1,16 @@
+{
+  "_comment": "Production. The required reviewer is the approval gate: a promote run pauses here until a human approves it, and GitHub records the result as a Deployment. prevent_self_review is false because on a single-maintainer repository the person dispatching the promotion is the only person who can approve it -- the same reasoning as the admin bypass in .github/rulesets/main-protection.json. Promotions are dispatched manually, so the workflow runs on a branch ref, not a tag.",
+  "wait_timer": 0,
+  "prevent_self_review": false,
+  "_reviewer_logins": ["mxwlf"],
+  "deployment_branch_policy": {
+    "protected_branches": false,
+    "custom_branch_policies": true
+  },
+  "_branch_policies": [
+    {
+      "name": "develop",
+      "type": "branch"
+    }
+  ]
+}

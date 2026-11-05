@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# Release Please — version and changelog, derived from Conventional Commits
+# ---------------------------------------------------------------------------
+# Keeps a release pull request open against `develop`. Merging it writes
+# CHANGELOG.md, bumps .release-please-manifest.json and version.txt, creates the
+# tag, and publishes the GitHub Release. Publishing the release is what triggers
+# release.yml, which builds the one package every environment deploys.
+#
+# WHY A GITHUB APP TOKEN, NOT secrets.GITHUB_TOKEN
+# ------------------------------------------------
+# Events raised by the default GITHUB_TOKEN do not start other workflows. With
+# it, the release pull request would never get `ci`, `lighthouse`,
+# `dependency-review`, `osv-scan` or `gitleaks` reported against it, and
+# develop-protection requires all five — so the pull request could never be
+# merged. release-please's own README warns about this. An app token also keeps
+# the credential short-lived and repo-scoped, unlike a personal access token.
+#
+# release-please's commits are UNSIGNED: it pushes through the Git Data API
+# (octokit.git.createCommit, via code-suggester) rather than the GraphQL
+# createCommitOnBranch mutation that yields GitHub-signed commits. That is why
+# develop-protection omits `required_signatures` while main-protection keeps it.
+# See .github/rulesets/README.md.
+
+name: Release Please
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Mint a short-lived app token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          target-branch: develop
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

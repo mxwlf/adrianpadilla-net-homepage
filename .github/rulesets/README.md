@@ -20,11 +20,12 @@ below is specific to this repository.
 
 ## What the shipped rulesets enforce
 
-`main-protection` is the only ruleset here, because the workflow is
-**trunk-based**: `main` is the sole long-lived branch, and everything else is a
-short-lived branch that exists only long enough to carry one pull request. A
-feature branch needs no rules, since it cannot reach `main` except through a
-reviewed, CI-gated pull request.
+There are two rulesets, because there are two long-lived branches. `develop` is
+the integration branch that pull requests land on; `main` is the record of what
+is deployed to production, advanced only after a release is promoted. Everything
+else is a short-lived branch that exists only long enough to carry one pull
+request, and needs no rules of its own: it cannot reach either protected branch
+except through a reviewed, CI-gated pull request.
 
 | `main-protection`         |                                                                  |
 | ------------------------- | ---------------------------------------------------------------- |
@@ -88,8 +89,49 @@ Two checks that run on pull requests are deliberately **not** required:
   requests and weekly as a report.
 
 Because `strict_required_status_checks_policy` is on, the branch must also be up
-to date with `main` before merging — if `main` moves, update the branch and let
-all five run again.
+to date with its base before merging — if the base moves, update the branch and
+let all five run again.
+
+Both rulesets require the same five contexts. The `push:` triggers in those
+workflows list `main` and `develop`, but that is only what produces post-merge
+runs: `pull_request:` carries no branch filter, so a pull request into either
+branch reports all five regardless.
+
+## How `develop-protection` differs from `main-protection`
+
+Two rules on `main` are deliberately absent from `develop`.
+
+- **`required_signatures` is not on `develop`.** release-please maintains
+  `CHANGELOG.md` and the version manifest by pushing commits through the GitHub
+  Git Data API (`octokit.git.createCommit`, by way of `code-suggester`) rather
+  than the GraphQL `createCommitOnBranch` mutation that produces GitHub-signed
+  commits. Its commits are therefore unsigned, and its `--signoff` option adds a
+  `Signed-off-by` trailer, which is a DCO attestation and not a signature. With
+  `required_signatures` on `develop`, every release pull request would be
+  unmergeable. `main` keeps the rule, and `main` only ever receives merges
+  created by GitHub.
+
+  Be precise about what `main` keeping the rule actually buys, because the
+  promotion workflow's bypass actor erodes part of it. `required_signatures`
+  checks every commit a push introduces, not just the tip, so when the `record`
+  job merges a release tag into `main` it carries release-please's unsigned
+  commits along as ancestors — and that merge only succeeds because
+  `bypass_mode: "always"` skips this rule with the rest of the ruleset. What
+  remains true, and is the thing worth having, is that **no human reaches
+  `main` except through a reviewed pull request whose own commits are signed.**
+  Dropping the `record` job restores the stronger property; see
+  `docs/deployment.md`.
+- **`creation` is not on `develop`.** On `main` it is belt-and-braces alongside
+  `deletion`. Repeating it here would buy nothing — `deletion` already blocks
+  removing the branch — while adding a way to get locked out: the admin bypass is
+  `bypass_mode: "pull_request"`, which does not apply to creating a branch, so a
+  `develop` that somehow needed recreating could not be recreated without first
+  editing the ruleset.
+
+**Apply order matters.** `develop` must exist *before* `make rulesets-apply`
+installs `develop-protection`, and the workflows must already report the five
+contexts on a `develop` pull request. A required context that is never reported
+leaves pull requests waiting on it forever.
 
 ## The ruleset cannot enable a merge method the repository forbids
 
