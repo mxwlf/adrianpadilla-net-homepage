@@ -155,10 +155,8 @@ for you, because it lives on the repository rather than in a ruleset.
 
 ## The other one: the SHA-pinning policy
 
-`.claude/rules/security.md` requires third-party actions to be pinned to full
-commit SHAs, and GitHub enforces it rather than leaving it to review. The
-setting is an Actions policy, not a ruleset, so nothing in this directory
-describes it:
+GitHub enforces action pinning rather than leaving it to review. The setting is
+an Actions policy, not a ruleset, so nothing in this directory describes it:
 
 ```sh
 # Check it
@@ -176,23 +174,69 @@ step, before any action executes:
 > allowed in `OWNER/REPO` because all actions must be pinned to a full-length
 > commit SHA.
 
-Two consequences that are easy to be surprised by:
+**The lockfile satisfies this policy, so the workflows do not carry SHAs.**
+`uses:` lines reference a full semver tag and `.github/workflows/actions.lock`
+records the commit. The two policies are independent checks that layer, and an
+onboarded workflow passes the SHA one without a SHA in sight. That is verified,
+not assumed: the pull request that introduced the lockfile replaced every SHA
+with a tag while this policy was active, and every check passed.
 
-- **Re-running a historical run fails.** A re-run replays the workflow file from
-  that run's commit, so anything from before the workflows were pinned is now
-  blocked. The run is not recoverable; push the change again on a current commit
-  instead.
-- **Keep the version comment.** Pins are written `@<sha> # v7`. Dependabot reads
-  that convention and updates the SHA and the comment together, which is what
-  stops the pins from silently rotting. Drop the comment and you keep the policy
-  but lose the updates.
-
-Enabling this is only safe once every `uses:` in the repository is already
-pinned — otherwise it blocks every run. Audit first:
+Enabling this policy is only safe once every workflow is covered — by the
+lockfile, or by SHAs if there is no lockfile yet. Otherwise it blocks every run
+in the repository. Audit first:
 
 ```sh
+make actions-lock-verify-local   # with a lockfile: offline coverage check
+# or, without one, find unpinned uses: lines
 git grep -hoE 'uses: *[^ ]+' -- .github/workflows/ | grep -vE '@[0-9a-f]{40}$'
 ```
+
+One consequence that is easy to be surprised by: **re-running a historical run
+fails.** A re-run replays the workflow file from that run's commit, so anything
+from before the repository was covered is now blocked, with the error above. The
+run is not recoverable; push the change again on a current commit instead.
+
+## Require lockfile
+
+A second Actions policy, independent of the first. It blocks runs of workflows
+that are not onboarded to `.github/workflows/actions.lock` — **including
+workflows with no `uses:` dependencies at all**. How the two interact:
+
+| Workflow | SHA pinning | Require lockfile |
+| --- | --- | --- |
+| In the lockfile | passes, no SHAs needed | passes |
+| Not in the lockfile, `uses:` pinned to SHAs | passes | **blocked** |
+| Not in the lockfile, `uses:` on tags or branches | **blocked** | **blocked** |
+
+**Not currently enabled, and it may not be available on this account.** The
+policy lives in workflow execution policies rather than in
+`/actions/permissions`. That API exists here —
+`GET /repos/OWNER/REPO/actions/policies` answers, and a policy with no rules can
+be created — but no rule type for the lockfile requirement could be configured
+through it. The documentation gates the feature behind a version flag and
+presents the how-to as GitHub Enterprise Cloud, so check
+**Settings → Actions → Policies** in the web UI for whether it is offered before
+assuming the API is simply being guessed at wrongly.
+
+The lockfile and its verification job stand on their own regardless: they are
+what actually pins the dependencies, and the `actions-lock` check is what stops
+a workflow merging without being onboarded. The policy would only add a runtime
+backstop.
+
+If it does become available, note that **Evaluate** mode — which reports what
+would have been blocked without blocking it — is Enterprise Cloud only, so here
+it is active or off with no dry run. Order matters:
+
+1. The lockfile must already be on the default branch.
+2. `make actions-lock-verify` must pass, confirming every workflow is covered.
+3. The `actions-lock` job must be reporting on pull requests, so a new workflow
+   cannot merge without being onboarded. That job is what makes the policy safe
+   to leave active; without it, adding a workflow and forgetting to run
+   `make actions-lock` blocks it at run time instead of at review time.
+
+Reusable workflows are not covered by the caller's lockfile. If this repository
+ever calls one from elsewhere, that repository needs its own lockfile or this
+policy blocks the calling workflow.
 
 ## What is portable between repositories
 
