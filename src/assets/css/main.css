@@ -453,6 +453,17 @@ main {
   text-transform: uppercase;
 }
 
+/* Secondary to the copyright line, and the hierarchy comes from size alone.
+   An earlier version dimmed this with opacity: 0.7, which dropped the contrast
+   to 3.54:1 against the 4.5:1 WCAG AA needs for text this size -- axe caught it.
+   Inheriting the body colour keeps the ratio identical to the line above, in
+   both themes, with nothing to re-measure when either changes. */
+.footer-version {
+  font-size: 12px;
+  line-height: 20px;
+  text-transform: uppercase;
+}
+
 /* === Focus Styles === */
 :focus-visible {
   outline: 2px solid currentcolor;

@@ -1,3 +1,15 @@
+{#
+  The version is spelled out rather than rendered as a bare "v1.0.1". It needs
+  no visually-hidden label and no ARIA that way, which is the cheaper kind of
+  accessible: "Version 1.0.1" reads correctly aloud and on screen.
+
+  Deliberately not a link to the release on GitHub. In a release pull request,
+  version.txt already holds the NEW version while its tag does not exist yet, so
+  the link would be a guaranteed 404 on exactly the pull request that introduces
+  it -- the same trap the changelog's compare link set, which the link checker
+  now has to exclude.
+#}
 <footer class="site-footer">
   <p class="footer-text">&copy; {{ build.year }} {{ site.author }}. All rights reserved.</p>
+  <p class="footer-version">Version {{ build.version }}</p>
 </footer>
