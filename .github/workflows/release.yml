@@ -1,0 +1,99 @@
+# ---------------------------------------------------------------------------
+# Release — build the package once, attest it, attach it to the Release
+# ---------------------------------------------------------------------------
+# This is the ONLY place a release artifact is built. The test environment and
+# production both deploy the asset produced here, so a promotion is a promotion
+# and not a second, unverified build.
+#
+# Triggered by release-please publishing a Release. It checks out the tag rather
+# than a branch, so the package is built from exactly the commit that was
+# tagged, even if `develop` has already moved on.
+#
+# `make package` re-runs the gates in report-producing mode (build,
+# html-validate, Playwright, axe, Lighthouse) and collects their output into the
+# package, so the evidence travels with the artifact it describes.
+
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # attach assets to the Release
+      id-token: write # mint the OIDC token attest-build-provenance signs with
+      attestations: write # record the provenance attestation
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      # Via env rather than inline interpolation: a tag name is attacker-
+      # controlled in the general case, and must not be pasted into a shell.
+      - name: Resolve the version from the tag
+        id: version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: echo "value=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build the release package
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: make package
+
+      - name: Archive the package
+        id: archive
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          archive="release-${VERSION}.tar.gz"
+          tar -czf "$archive" -C release .
+          echo "name=${archive}" >> "$GITHUB_OUTPUT"
+          echo "### Release ${VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo '```json'
+            cat release/manifest.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Binds the archive's digest to this workflow, this commit and this
+      # runner. `gh attestation verify --owner mxwlf <archive>` checks it, and
+      # the promote job verifies the digest before production is touched.
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: ${{ steps.archive.outputs.name }}
+
+      # manifest.json and SHA256SUMS go up alongside the archive so the deploy
+      # jobs can read the version and the expected digests without downloading
+      # and unpacking the whole package first.
+      - name: Attach the assets to the Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          ARCHIVE: ${{ steps.archive.outputs.name }}
+        run: |
+          gh release upload "$TAG" \
+            "$ARCHIVE" \
+            release/SHA256SUMS \
+            release/manifest.json \
+            --clobber
