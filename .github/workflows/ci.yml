@@ -24,7 +24,7 @@ on:
   # extra signal.
   pull_request:
   push:
-    branches: [main]
+    branches: [main, develop]
 
 concurrency:
   group: ci-${{ github.ref }}
