@@ -12,7 +12,7 @@ output "resource_group_name" {
 }
 
 output "default_host_name" {
-  description = "Azure-assigned hostname. This is the CNAME target for test.adrianpadilla.net — create that record by hand, once."
+  description = "Azure-assigned hostname, and the CNAME target for test.adrianpadilla.net. scripts/test-env.sh reads this to write that record: a rebuilt app is given a new hostname, so the value changes on every teardown and restore."
   value       = azurerm_static_web_app.test.default_host_name
 }
 
@@ -22,7 +22,7 @@ output "custom_domain" {
 }
 
 output "cname_record_to_create" {
-  description = "The DNS record the connectivity subscription must hold. Deliberately not managed here — see main.tf."
+  description = "The DNS record the connectivity subscription must hold. Deliberately not managed here — see main.tf. `make test-env-restore` writes it; this output is what to create by hand on a first-ever apply, before that target can run."
   value       = "${var.custom_domain}. CNAME ${azurerm_static_web_app.test.default_host_name}."
 }
 

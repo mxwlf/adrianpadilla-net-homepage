@@ -39,6 +39,7 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v7.1.0'
         - 'azure/login@v3.1.0'
+        - 'opentofu/setup-opentofu@v2.0.2'
     '.github/workflows/secrets.yml':
         - 'actions/checkout@v7.0.1'
         - 'gitleaks/gitleaks-action@v3.0.0'
@@ -47,6 +48,10 @@ workflows:
         - 'actions/dependency-review-action@v5.0.0'
         - 'github/codeql-action@v4.39.3'
         - 'google/osv-scanner-action@v2.7.0'
+    '.github/workflows/test-env.yml':
+        - 'actions/checkout@v7.0.1'
+        - 'azure/login@v3.1.0'
+        - 'opentofu/setup-opentofu@v2.0.2'
 dependencies:
     'actions/attest-build-provenance@v4.2.2':
         ref: 'v4.2.2'

@@ -47,11 +47,29 @@
 - `infra/test/` and `infra/prod/` describe both environments in OpenTofu, in the
   same shape. Every `tf-*` target takes `INFRA_ENV`, defaulting to `test`:
   `make tf-plan INFRA_ENV=prod`. Neither owns any DNS — the
-  `adrianpadilla.net` zone also serves several unrelated services, so the deploy
-  identity holds no DNS permissions at all and the records are made by hand.
-  Production's apex binding is likewise manual, because only `cname-delegation`
-  validation is polled by the provider. The cutover runbook is in
-  @docs/deployment.md.
+  `adrianpadilla.net` zone also serves several unrelated services, so no
+  OpenTofu configuration here is allowed zone-level DNS rights and every
+  production record is made by hand. Production's apex binding is likewise
+  manual, because only `cname-delegation` validation is polled by the provider.
+  The cutover runbook is in @docs/deployment.md.
+- **The test environment is disposable, and that is the one DNS exception.**
+  `make test-env-teardown` destroys the test Static Web App — never its resource
+  group, which `infra/test/` reads with a `data` block and so cannot destroy —
+  and parks `test.adrianpadilla.net` on production. `make test-env-restore`
+  rebuilds it and repoints the record; `release.yml` runs that before every
+  deploy to test, so **deploying is what switches the DNS back**. A rebuilt app
+  gets a new `*.azurestaticapps.net` hostname, so that record cannot be static;
+  leaving it on a released hostname would be a dangling-CNAME takeover. The test
+  identity therefore holds `DNS Zone Contributor` scoped to the single
+  `CNAME/test` record set and nothing wider, and `scripts/test-env.sh` only ever
+  writes that record, never deletes it. The production identity still holds no
+  DNS permission at all.
+- Parking is not redirecting. `test.adrianpadilla.net` resolves into production
+  but is bound to nothing there — production is Free SKU with both custom-domain
+  slots spent — so it does not answer 301. Do not "fix" that by binding it to
+  the production app: `staticwebapp.config.json` cannot match on `Host`, so
+  production would serve its own content and canonicals on the test hostname
+  without `X-Robots-Tag: noindex`. See @docs/deployment.md.
 
 ## References
 

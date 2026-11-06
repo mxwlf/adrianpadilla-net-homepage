@@ -1,0 +1,175 @@
+# ---------------------------------------------------------------------------
+# Test environment lifecycle — tear it down, or put it back
+# ---------------------------------------------------------------------------
+# `workflow_dispatch` only. There is no push, no release and no schedule
+# trigger: nothing you merge should be able to delete an environment, and
+# nothing on a timer should either.
+#
+# The resource group is never destroyed. infra/test/ reads it with a `data`
+# block, so it is not in the state file and `tofu destroy` cannot reach it —
+# and scripts/test-env.sh asserts that before destroying anything.
+#
+# DNS IS PART OF THIS, which is a change from how this repository used to work.
+# A torn-down Static Web App releases its *.azurestaticapps.net hostname, and a
+# rebuilt one is assigned a new one, so `test.adrianpadilla.net` cannot be the
+# hand-made record that "never changes" any more. Leaving it aimed at a released
+# Azure hostname is a dangling-CNAME subdomain takeover waiting to happen.
+#
+# The deploy identity therefore holds `DNS Zone Contributor` at RECORD SET
+# scope — the single `test` CNAME in the adrianpadilla.net zone — and nothing
+# wider. It still cannot read, change or delete the apex, www, git, id, ntfy,
+# the DKIM selectors or anything else that zone serves. The original objection
+# was blast radius, and at this scope the blast radius is one record. See
+# docs/deployment.md for the grant.
+#
+# It runs in the `test` environment because that is what the federated
+# credential's subject claim is bound to: only a job running there can exchange
+# an OIDC token for the test service principal. The `production` identity is a
+# different app registration with rights in a different subscription, and has no
+# DNS permission at all.
+
+name: Test environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do"
+        required: true
+        type: choice
+        options:
+          - teardown
+          - restore
+          - status
+      confirm:
+        description: 'For teardown only: type "teardown" to confirm'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# Serialised against itself and against a release deploy. These two must never
+# interleave: a teardown landing between a restore's two applies would leave the
+# DNS record pointing at an app that no longer exists.
+concurrency:
+  group: test-env
+  cancel-in-progress: false
+
+jobs:
+  test-env:
+    runs-on: ubuntu-24.04
+    environment:
+      name: test
+      url: https://${{ vars.TEST_HOSTNAME }}
+    permissions:
+      contents: read
+      id-token: write # workload identity federation to Azure
+    steps:
+      # Checked before anything slow, and before Azure is touched at all, so a
+      # half-meant teardown costs seconds. The choice input cannot carry this:
+      # `teardown` is one click away in the dispatch form.
+      - name: Require the typed confirmation for a teardown
+        if: inputs.action == 'teardown'
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != 'teardown' ]; then
+            echo '::error::teardown requires the confirm input to be exactly `teardown`'
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7.0.1
+
+      - uses: opentofu/setup-opentofu@v2.0.2
+        with:
+          tofu_version: 1.13.8
+          # The wrapper rewrites stdout to collect it for later steps, which
+          # breaks `tofu output -raw` being read by the script.
+          tofu_wrapper: false
+
+      - uses: azure/login@v3.1.0
+        with:
+          client-id: ${{ vars.TEST_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.TEST_SUBSCRIPTION_ID }}
+
+      # backend.config is git-ignored — it names the state storage account,
+      # which is environment-specific — so the job writes it rather than
+      # checking it out. The values match what `make tf-bootstrap` wrote
+      # locally; the state key is derived from the environment name there too.
+      - name: Write the OpenTofu backend configuration
+        env:
+          RESOURCE_GROUP: ${{ vars.TEST_RESOURCE_GROUP }}
+          STORAGE_ACCOUNT: ${{ vars.TEST_TFSTATE_STORAGE_ACCOUNT }}
+          SUBSCRIPTION_ID: ${{ vars.TEST_SUBSCRIPTION_ID }}
+        run: |
+          # Named explicitly, because an unset repository variable interpolates
+          # to the empty string and `tofu init` would then fail on a backend
+          # pointing at account "" — an error that says nothing about the cause.
+          for v in RESOURCE_GROUP STORAGE_ACCOUNT SUBSCRIPTION_ID; do
+            if [ -z "${!v}" ]; then
+              echo "::error::repository variable for $v is not set — see docs/deployment.md, Repository variables"
+              exit 1
+            fi
+          done
+          cat > infra/test/backend.config <<EOF
+          resource_group_name  = "${RESOURCE_GROUP}"
+          storage_account_name = "${STORAGE_ACCOUNT}"
+          container_name       = "tfstate"
+          key                  = "test.tfstate"
+          subscription_id      = "${SUBSCRIPTION_ID}"
+          EOF
+
+      # terraform.tfvars is git-ignored for the same reason. Both required
+      # variables have no defaults on purpose — subscription_id especially, so
+      # the test environment can never fall back to production's subscription.
+      - name: Write the OpenTofu variables
+        env:
+          SUBSCRIPTION_ID: ${{ vars.TEST_SUBSCRIPTION_ID }}
+          RESOURCE_GROUP: ${{ vars.TEST_RESOURCE_GROUP }}
+        run: |
+          cat > infra/test/terraform.tfvars <<EOF
+          subscription_id     = "${SUBSCRIPTION_ID}"
+          resource_group_name = "${RESOURCE_GROUP}"
+          EOF
+
+      - name: ${{ inputs.action }}
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_USE_AZUREAD: "true"
+          ARM_CLIENT_ID: ${{ vars.TEST_AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.TEST_SUBSCRIPTION_ID }}
+          DNS_SUBSCRIPTION_ID: ${{ vars.DNS_SUBSCRIPTION_ID }}
+          DNS_RESOURCE_GROUP: ${{ vars.DNS_RESOURCE_GROUP }}
+          DNS_ZONE: ${{ vars.DNS_ZONE }}
+          DNS_RECORD_NAME: ${{ vars.TEST_DNS_RECORD_NAME }}
+          PARKED_CNAME: ${{ vars.TEST_PARKED_CNAME }}
+          ASSUME_YES: "1"
+          ACTION: ${{ inputs.action }}
+        run: make "test-env-${ACTION}"
+
+      - name: Report
+        if: always()
+        env:
+          ACTION: ${{ inputs.action }}
+          HOST: ${{ vars.TEST_HOSTNAME }}
+          PARKED: ${{ vars.TEST_PARKED_CNAME }}
+        run: |
+          {
+            echo "### Test environment: ${ACTION}"
+            case "$ACTION" in
+              teardown)
+                echo "The Static Web App is gone; its resource group and OpenTofu state storage are not."
+                echo "\`${HOST}\` is parked at \`${PARKED:-www.adrianpadilla.net}\`, so the name resolves"
+                echo "into production and cannot be claimed by anyone else — but production binds no"
+                echo "custom domain for it, so HTTPS to that name will not serve. See docs/deployment.md."
+                echo ""
+                echo "The next release restores the environment automatically."
+                ;;
+              restore)
+                echo "\`${HOST}\` is bound to the test Static Web App again. Deploy a release to put content on it."
+                ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
