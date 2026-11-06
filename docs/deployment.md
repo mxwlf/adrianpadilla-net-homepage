@@ -183,9 +183,18 @@ serves content on our domain.
 So the test deploy identity does now hold a DNS permission — at **record set
 scope**, not zone scope:
 
+Have an `az` context in **your own** tenant before running this, not a work
+one. `az ad sp show` resolves against the _active_ tenant regardless of
+`--subscription`, so with the wrong one selected it reports that the app does
+not exist — the same trap `scripts/tf-bootstrap.sh` guards against.
+
 ```sh
 DNS_SUB=42cb3155-85e5-4646-8110-a3aa3d02460d   # the connectivity subscription
-TEST_SP=<the test service principal's object id>
+az account set --subscription "$DNS_SUB"
+
+# Derived from the published client id rather than written down, so it cannot
+# go stale if the app registration is ever recreated.
+TEST_SP=$(az ad sp show --id "$(gh variable get TEST_AZURE_CLIENT_ID)" --query id --output tsv)
 
 az role assignment create \
   --assignee-object-id "$TEST_SP" \
