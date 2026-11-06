@@ -50,6 +50,13 @@
   --color-heading: #333;
   --color-rule: #e6e6e6;
 
+  /* Recedes toward the background rather than away from it, so "muted" is a
+     step brighter than the body text here and a step dimmer in dark, where
+     --color-text is already #fff and has nowhere brighter to go. Both values
+     are measured against their own --color-bg, not assumed -- see
+     .footer-version for the ratios and for how little headroom there is. */
+  --color-text-muted: #6b6b6b;
+
   /* Hero copy sits on the photograph, so it keeps one value in both themes. */
   --color-hero-text: #eee4e4;
   --measure: 44rem;
@@ -64,6 +71,7 @@
     --color-text: #fff;
     --color-heading: #fff;
     --color-rule: #3f3f3f;
+    --color-text-muted: #ccc;
 
     color-scheme: dark;
   }
@@ -74,6 +82,7 @@
   --color-text: #fff;
   --color-heading: #fff;
   --color-rule: #3f3f3f;
+  --color-text-muted: #ccc;
 
   color-scheme: dark;
 }
@@ -453,14 +462,21 @@ main {
   text-transform: uppercase;
 }
 
-/* Secondary to the copyright line, and the hierarchy comes from size alone.
+/* Secondary to the copyright line; the hierarchy comes from size and colour.
    An earlier version dimmed this with opacity: 0.7, which dropped the contrast
-   to 3.54:1 against the 4.5:1 WCAG AA needs for text this size -- axe caught it.
-   Inheriting the body colour keeps the ratio identical to the line above, in
-   both themes, with nothing to re-measure when either changes. */
+   to 3.54:1 against the 4.5:1 WCAG AA needs for text this size -- axe caught
+   it. --color-text-muted is an opaque measured colour instead, so the ratio is
+   a property of the two tokens rather than of whatever happens to sit behind
+   the footer: 5.33:1 light (#6b6b6b on #fff), 7.87:1 dark (#ccc on #333).
+   The headroom in light is thinner than it looks -- the next grey step, #777,
+   is 4.48:1 and fails -- so re-measure if either token moves.
+
+   10px is deliberate and stays normal-text for contrast purposes: WCAG's 3:1
+   large-text allowance starts at 18.66px, and nothing here is close. */
 .footer-version {
-  font-size: 12px;
+  font-size: 10px;
   line-height: 20px;
+  color: var(--color-text-muted);
   text-transform: uppercase;
 }
 
