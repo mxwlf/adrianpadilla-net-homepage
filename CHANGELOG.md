@@ -4,6 +4,14 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.3.1](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.3.0...v1.3.1) (2026-11-06)
+
+
+### Fixes
+
+* **infra:** read the DNS record through both az output casings ([6f6e6ba](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/6f6e6babfe9e738469d02d09d37cc085a61bc714))
+* **infra:** read the DNS record through both az output casings ([8e16b77](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/8e16b77bf0f35edb4315af2e97cd372190bfe8e8))
+
 ## [1.3.0](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.2.3...v1.3.0) (2026-11-06)
 
 
