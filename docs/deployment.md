@@ -12,6 +12,7 @@ PR ──▶ develop ──▶ release PR ──▶ merge ──▶ tag + GitHub
                                                    ▼
                                            test (automatic)
                                         test.adrianpadilla.net
+                                   rebuilt + DNS repointed if torn down
                                                    ┊
                       ┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┊┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉┉
                       ┊   no automatic path crosses this line           ┊
@@ -31,6 +32,7 @@ The most important thing to know: **nothing you merge can reach production.**
 | ------------------ | ---------------------------- | --------------------------------------------------------- |
 | `release.yml`      | `release: published`         | **test** — environment has no reviewers, so it just goes  |
 | `promote-prod.yml` | **`workflow_dispatch` only** | **production** — environment requires your approval first |
+| `test-env.yml`     | **`workflow_dispatch` only** | nothing — it creates or destroys the test environment     |
 
 `promote-prod.yml` has no `push`, no `release`, no `schedule`. Production has no
 automatic trigger of any kind, and reaching it takes two deliberate acts that
@@ -116,6 +118,128 @@ Two details worth knowing:
   the last Oryx-built deploy from before the old workflow was retired, so the
   first promotion is the first time it receives a hash-verified artifact, and
   the content digest changes.
+
+## The test environment is disposable
+
+The test environment exists to be looked at while a release is under
+consideration. Between releases it does not have to exist at all, so it can be
+torn down and the next release puts it back.
+
+```sh
+make test-env-status     # is it up, and where does its DNS point
+make test-env-teardown   # destroy the app, park test.adrianpadilla.net
+make test-env-restore    # rebuild it, point the DNS back
+```
+
+Or from GitHub: **Actions → Test environment → Run workflow**, choosing
+`teardown`, `restore` or `status`. A teardown additionally requires the word
+`teardown` typed into the confirm box; the dropdown alone is one click.
+
+| What                               | Teardown                                             |
+| ---------------------------------- | ---------------------------------------------------- |
+| The Static Web App                 | destroyed                                            |
+| Its resource group                 | **untouched**                                        |
+| The OpenTofu state storage account | **untouched**                                        |
+| `test.adrianpadilla.net`           | repointed at production                              |
+| `vars.TEST_*`                      | unchanged — the app's name is stable across rebuilds |
+
+**The resource group surviving is structural, not careful.** `infra/test/` reads
+the group with a `data` block, so it is not in the state file and `tofu destroy`
+has nothing to delete. The state storage account is not in the configuration at
+all. `make test-env-teardown` asserts the first of those — it refuses to run if
+a managed `azurerm_resource_group` ever appears in the state — rather than
+trusting that nobody changed it.
+
+### Restore is what a deployment does
+
+`release.yml` runs `make test-env-restore` in its own `ensure-test` job before
+`deploy-test`, so **deploying to test is what switches the DNS back.** There is
+no separate step to remember and no state to get wrong: the target is idempotent,
+so on a release where the environment was already up it costs one no-op apply
+and one DNS read.
+
+A restore is two applies, for the same reason the first-ever apply was:
+`azurerm_static_web_app_custom_domain` validates by `cname-delegation`, so the
+CNAME has to resolve to the app's Azure hostname before the binding can be
+created — and that hostname is not known until the app exists. It then waits for
+Azure to report the binding `Ready`, which is when the certificate has been
+issued; without that wait the smoke test in `deploy-test` would hit a cold
+hostname and fail the TLS handshake, which looks nothing like the cold
+certificate it actually is.
+
+Both workflows share a `test-env` concurrency group. A teardown landing between
+a restore's two applies would leave the record pointing at an app that no longer
+exists.
+
+### Why DNS is automated now, and why that is still narrow
+
+The record used to be made by hand on the grounds that it never changes. **It
+changes now.** A destroyed Static Web App releases its `*.azurestaticapps.net`
+hostname and a rebuilt one is assigned a new one, so the CNAME moves on every
+teardown and every restore. Leaving it aimed at a released Azure hostname is the
+textbook dangling-CNAME subdomain takeover: whoever next claims that hostname
+serves content on our domain.
+
+So the test deploy identity does now hold a DNS permission — at **record set
+scope**, not zone scope:
+
+Have an `az` context in **your own** tenant before running this, not a work
+one. `az ad sp show` resolves against the _active_ tenant regardless of
+`--subscription`, so with the wrong one selected it reports that the app does
+not exist — the same trap `scripts/tf-bootstrap.sh` guards against.
+
+```sh
+DNS_SUB=42cb3155-85e5-4646-8110-a3aa3d02460d   # the connectivity subscription
+az account set --subscription "$DNS_SUB"
+
+# Derived from the published client id rather than written down, so it cannot
+# go stale if the app registration is ever recreated.
+TEST_SP=$(az ad sp show --id "$(gh variable get TEST_AZURE_CLIENT_ID)" --query id --output tsv)
+
+az role assignment create \
+  --assignee-object-id "$TEST_SP" \
+  --assignee-principal-type ServicePrincipal \
+  --role 'DNS Zone Contributor' \
+  --scope "/subscriptions/$DNS_SUB/resourceGroups/dns-prod/providers/Microsoft.Network/dnsZones/adrianpadilla.net/CNAME/test"
+```
+
+That grant can write exactly one record set. It cannot read, change or delete
+the apex, `www`, `git`, `id`, `ntfy`, `codenomad`, `macwolf`, `ief-replay`, the
+DKIM selectors or the Tailscale challenge, and it cannot enumerate the zone. The
+original objection to managing DNS here was blast radius, and at this scope the
+blast radius is the one record we already intended to change. The **production**
+identity is a different app registration and still holds no DNS permission of
+any kind.
+
+`scripts/test-env.sh` only ever calls `set-record`, never `delete`, so the record
+set stays in existence through a teardown. It also refuses any record name that
+is not a single plain label — `@` and `*` are rejected before `az` is invoked.
+
+### "Parked" does not mean "redirected"
+
+A teardown points `test.adrianpadilla.net` at `www.adrianpadilla.net`. That is a
+**parking record**: it makes the name resolve into production and removes the
+takeover risk, which is the property worth having.
+
+**It does not produce a 301.** Production is also Free SKU, and the Free SKU
+allows two custom domains — both already spent, on the apex and `www`. Nothing
+in production is bound to `test.adrianpadilla.net`, so an HTTPS request to it
+fails the certificate check rather than being redirected. A browser-visible
+redirect needs something that terminates TLS for that name, and there are only
+three ways to get one:
+
+- **Move production to Standard** (five custom domains) and bind
+  `test.adrianpadilla.net` to it. This is the obvious option and it is a trap:
+  `staticwebapp.config.json` cannot match on `Host`, so the production app would
+  **serve production's content** on the test hostname, with production's
+  canonical URLs and without the `X-Robots-Tag: noindex` that exists precisely
+  to stop that. It trades a dead name for a duplicate-content problem.
+- **Keep a separate redirect host alive.** A correct 301, and no longer a
+  teardown — there is always something running.
+- **Leave it parked.** What this implements.
+
+If a visible redirect is wanted later, the second option is the only one that
+does not damage production's SEO, and it should be its own change.
 
 ## What a release package contains
 
@@ -252,12 +376,23 @@ Create that CNAME in the `adrianpadilla.net` zone — which lives in the
 `connectivity` subscription, resource group `dns-prod` — then `make tf-apply`
 again to bind the custom domain.
 
-**This record is deliberately not managed by OpenTofu.** That zone also serves
-the apex records for the live site plus `git`, `id`, `ntfy`, `codenomad`,
-`macwolf`, `ief-replay`, the DKIM selectors and a Tailscale challenge. Granting
-the deploy identity `DNS Zone Contributor` there would let a bad plan delete all
-of it, so it holds no DNS permissions at all. The record never changes once
-created.
+After the first one, `make test-env-restore` writes that record for you. The
+hand-made pass is only needed before the record set exists at all, because the
+record-set-scoped role below is granted on a path that has to be there to be
+granted on.
+
+**This record is deliberately not managed by OpenTofu**, and it is not hand-made
+any more either. That zone also serves the apex records for the live site plus
+`git`, `id`, `ntfy`, `codenomad`, `macwolf`, `ief-replay`, the DKIM selectors
+and a Tailscale challenge. Granting the deploy identity `DNS Zone Contributor`
+over the **zone** would let a bad plan delete all of it. It is granted over the
+single `CNAME/test` **record set** instead, and `scripts/test-env.sh` writes it
+with `az` — see
+[Why DNS is automated now](#why-dns-is-automated-now-and-why-that-is-still-narrow).
+
+The claim that "the record never changes once created" was true until the
+teardown pipeline existed. It changes on every teardown and restore, because a
+rebuilt Static Web App is assigned a new `*.azurestaticapps.net` hostname.
 
 Delegating `test.adrianpadilla.net` as its own zone would avoid the manual step,
 and was rejected: it makes the hostname a zone apex, which forces Azure's
@@ -480,7 +615,7 @@ make_identity() {
   sp_id=$(az ad sp show --id "$app_id" --query id --output tsv)
 
   # Manage that environment's Static Web App and read its deployment token.
-  # Nothing outside this one resource group, and no DNS role anywhere.
+  # Nothing outside this one resource group.
   az role assignment create --assignee-object-id "$sp_id" \
     --assignee-principal-type ServicePrincipal --role Contributor \
     --scope "/subscriptions/$2/resourceGroups/$3" >/dev/null
@@ -491,6 +626,14 @@ make_identity() {
 make_identity test       '<test subscription guid>'                '<test resource group>'
 make_identity production '0af99616-1635-473a-8cbb-9ceb60f73388'    'adrianpadilla-net-homepage-prod-rg'
 ```
+
+**The test identity needs one role outside that group**, and production does
+not: `DNS Zone Contributor` on the `CNAME/test` record set in the
+`adrianpadilla.net` zone, so teardown and restore can move
+`test.adrianpadilla.net`. The grant and the reasoning are in
+[Why DNS is automated now](#why-dns-is-automated-now-and-why-that-is-still-narrow).
+Production holds no DNS permission of any kind, which is why the apex binding is
+still done by hand.
 
 The two client ids are published as separate variables
 (`TEST_AZURE_CLIENT_ID`, `PROD_AZURE_CLIENT_ID`), so the separation is visible in
@@ -520,6 +663,25 @@ gh variable set TEST_STATIC_WEB_APP_NAME  --body "$(tofu -chdir=infra/test outpu
 gh variable set TEST_HOSTNAME             --body 'test.adrianpadilla.net'
 ```
 
+The test environment's teardown and restore need five more. The first names the
+state storage account, which `release.yml` and `test-env.yml` write into
+`infra/test/backend.config` at run time — that file is git-ignored, so it is not
+checked out:
+
+```sh
+gh variable set TEST_TFSTATE_STORAGE_ACCOUNT --body 'apnhtfstate'
+gh variable set DNS_SUBSCRIPTION_ID          --body '42cb3155-85e5-4646-8110-a3aa3d02460d'
+gh variable set DNS_RESOURCE_GROUP           --body 'dns-prod'
+gh variable set DNS_ZONE                     --body 'adrianpadilla.net'
+gh variable set TEST_DNS_RECORD_NAME         --body 'test'
+gh variable set TEST_PARKED_CNAME            --body 'www.adrianpadilla.net'
+```
+
+`scripts/test-env.sh` defaults every one of those except `DNS_SUBSCRIPTION_ID`
+to the value above, so a local `make test-env-status` needs only that one
+exported. They are repository variables anyway, so the workflows do not depend
+on the script's defaults staying correct.
+
 These are **variables, not secrets**. None of them is confidential — a client id
 and a subscription id are identifiers, not credentials, and the thing that
 actually authorises a deployment is the federated subject plus the environment's
@@ -537,6 +699,12 @@ make environments-show    # print the live configuration
 Reviewers are committed as **logins** and resolved to numeric ids at apply time,
 because user ids are account-scoped — the same portability rule
 `scripts/github-rulesets.sh` documents.
+
+`test` allows two refs: the `v*` tags `release.yml` deploys from, and the
+`develop` branch, because `test-env.yml` is dispatched manually and so runs on a
+branch ref. Without the second, a teardown fails before it starts with "Branch
+is not allowed to deploy to test" — a message that reads like a permissions
+problem rather than a branch policy.
 
 ### Production: variables and the `main` bypass
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "The test environment. No reviewers on purpose: the point of a test environment is that a merged release reaches it without ceremony. Deployments are triggered by release.yml publishing a Release, so the workflow runs on the tag ref -- hence the tag branch policy rather than a branch one.",
+  "_comment": "The test environment. No reviewers on purpose: the point of a test environment is that a merged release reaches it without ceremony. Deployments are triggered by release.yml publishing a Release, so the workflow runs on the tag ref -- hence the v* tag policy. The `develop` branch policy is for test-env.yml, which is dispatched manually and so runs on a branch ref, not a tag: without it, a teardown or restore is rejected before it starts with 'Branch is not allowed to deploy to test'. It does not weaken anything -- the test environment has no reviewers either way, and the identity this grants is the test one, which holds rights in the test subscription plus a single DNS record set.",
   "wait_timer": 0,
   "prevent_self_review": false,
   "_reviewer_logins": [],
@@ -11,6 +11,10 @@
     {
       "name": "v*",
       "type": "tag"
+    },
+    {
+      "name": "develop",
+      "type": "branch"
     }
   ]
 }

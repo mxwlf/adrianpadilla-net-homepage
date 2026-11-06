@@ -20,6 +20,10 @@
 #   make rulesets-diff     # check live branch protection against the repo
 #   make rulesets-export   # save live branch protection into the repo
 #
+#   make test-env-status   # is the test environment up, and where does its DNS point
+#   make test-env-teardown # destroy the test Static Web App, park its DNS
+#   make test-env-restore  # rebuild it and point its DNS back
+#
 # Requirements:
 #   - GNU make, git, and a POSIX shell (on Windows: Git Bash or WSL).
 #   - Node 20+ and npm, for everything that touches the site.
@@ -84,12 +88,13 @@ INFRA_DIRS := $(wildcard infra/*/)
         dev build clean clean-venv fmt lint test a11y lighthouse ci \
         reports sbom package \
         check-tofu tf-fmt tf-fmt-check tf-validate tf-bootstrap tf-init tf-plan tf-apply \
+        test-env-status test-env-teardown test-env-restore \
         check-gh-actions-lock actions-lock actions-lock-verify actions-lock-verify-local \
         rulesets-apply rulesets-diff rulesets-export \
         environments-apply environments-diff environments-show
 
 help: ## Show available targets
-	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-26s\033[0m %s\n", $$1, $$2}'
 
 # ---------------------------------------------------------------------------
 # SETUP
@@ -289,6 +294,37 @@ tf-plan: tf-init ## Show what would change (INFRA_ENV=test|prod)
 
 tf-apply: tf-init ## Apply an environment (INFRA_ENV=test|prod)
 	$(TOFU) -chdir=$(INFRA_DIR) apply $(TF_ARGS)
+
+# ---------------------------------------------------------------------------
+# TEST ENVIRONMENT LIFECYCLE
+# ---------------------------------------------------------------------------
+# Teardown and restore for the test environment, including the one DNS record.
+# See scripts/test-env.sh for why DNS is now automated — at record-set scope —
+# when every other record in that zone is still made by hand.
+#
+# These take NO INFRA_ENV, deliberately, and the script refuses to look at any
+# directory but infra/test/. Every other tf-* target is parameterised by
+# environment; a `make test-env-teardown INFRA_ENV=prod` that worked would be a
+# one-command outage, so the parameter does not exist here.
+#
+# The resource group is never destroyed: infra/test/ reads it with a `data`
+# block, so it is not in the state file, and `test-env-teardown` asserts that
+# before it destroys anything.
+#
+# `test-env-restore` is idempotent and is what release.yml runs before every
+# deploy to test — that is the mechanism by which a deployment puts
+# test.adrianpadilla.net back on the test environment.
+
+TEST_ENV := ./scripts/test-env.sh
+
+test-env-status: check-tofu ## Report whether the test environment is up and where its DNS points
+	$(TEST_ENV) status
+
+test-env-teardown: check-tofu ## Destroy the test Static Web App (not its group) and park its DNS at production
+	$(TEST_ENV) teardown
+
+test-env-restore: check-tofu ## Recreate the test Static Web App and point its DNS back at it (idempotent)
+	$(TEST_ENV) restore
 
 # ---------------------------------------------------------------------------
 # ACTIONS DEPENDENCY LOCKFILE

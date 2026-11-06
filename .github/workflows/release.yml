@@ -98,13 +98,108 @@ jobs:
             release/manifest.json \
             --clobber
 
+  # ---------------------------------------------------------------------------
+  # The test environment is torn down between releases, so it has to be put
+  # back before anything can be deployed to it.
+  # ---------------------------------------------------------------------------
+  # `make test-env-restore` is idempotent: when the app is already up and
+  # test.adrianpadilla.net already resolves to it, this is one no-op apply and
+  # one DNS read. When it is not, it rebuilds the Static Web App and repoints
+  # the CNAME at the new *.azurestaticapps.net hostname Azure assigns it -- a
+  # rebuilt app never gets its old hostname back, which is the whole reason that
+  # record is no longer hand-made. See scripts/test-env.sh.
+  #
+  # Its own job rather than steps inside `deploy-test`, so that "the environment
+  # exists" and "the release is on it" fail separately and can be re-run
+  # separately.
+  ensure-test:
+    needs: package
+    runs-on: ubuntu-24.04
+    # No `url:` -- this job makes the environment exist, it does not publish
+    # anything to it, so it should not claim the deployment.
+    environment:
+      name: test
+    permissions:
+      contents: read
+      id-token: write # workload identity federation to Azure
+    # Shared with test-env.yml. A dispatched teardown landing between this
+    # restore's two applies would leave DNS aimed at an app that no longer
+    # exists, so the two workflows queue behind each other.
+    concurrency:
+      group: test-env
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: opentofu/setup-opentofu@v2.0.2
+        with:
+          tofu_version: 1.13.8
+          # The wrapper rewrites stdout, which breaks the `tofu output -raw`
+          # calls the script reads the app's hostname from.
+          tofu_wrapper: false
+
+      - uses: azure/login@v3.1.0
+        with:
+          client-id: ${{ vars.TEST_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.TEST_SUBSCRIPTION_ID }}
+
+      # backend.config and terraform.tfvars are git-ignored (they name the state
+      # storage account and the subscription), so they are written here rather
+      # than checked out. The values match what `make tf-bootstrap` writes.
+      - name: Write the OpenTofu backend configuration and variables
+        env:
+          RESOURCE_GROUP: ${{ vars.TEST_RESOURCE_GROUP }}
+          STORAGE_ACCOUNT: ${{ vars.TEST_TFSTATE_STORAGE_ACCOUNT }}
+          SUBSCRIPTION_ID: ${{ vars.TEST_SUBSCRIPTION_ID }}
+        run: |
+          # Named explicitly, because an unset repository variable interpolates
+          # to the empty string and `tofu init` would then fail on a backend
+          # pointing at account "" — an error that says nothing about the cause.
+          for v in RESOURCE_GROUP STORAGE_ACCOUNT SUBSCRIPTION_ID; do
+            if [ -z "${!v}" ]; then
+              echo "::error::repository variable for $v is not set — see docs/deployment.md, Repository variables"
+              exit 1
+            fi
+          done
+          cat > infra/test/backend.config <<EOF
+          resource_group_name  = "${RESOURCE_GROUP}"
+          storage_account_name = "${STORAGE_ACCOUNT}"
+          container_name       = "tfstate"
+          key                  = "test.tfstate"
+          subscription_id      = "${SUBSCRIPTION_ID}"
+          EOF
+          cat > infra/test/terraform.tfvars <<EOF
+          subscription_id     = "${SUBSCRIPTION_ID}"
+          resource_group_name = "${RESOURCE_GROUP}"
+          EOF
+
+      - name: Restore the test environment and its DNS
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_USE_AZUREAD: "true"
+          ARM_CLIENT_ID: ${{ vars.TEST_AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.TEST_SUBSCRIPTION_ID }}
+          DNS_SUBSCRIPTION_ID: ${{ vars.DNS_SUBSCRIPTION_ID }}
+          DNS_RESOURCE_GROUP: ${{ vars.DNS_RESOURCE_GROUP }}
+          DNS_ZONE: ${{ vars.DNS_ZONE }}
+          DNS_RECORD_NAME: ${{ vars.TEST_DNS_RECORD_NAME }}
+        run: make test-env-restore
+
   deploy-test:
     # Sequenced, not co-triggered. Both this and `package` used to fire on
     # `release: published` with nothing ordering them, so the deploy raced the
     # build whose asset it downloads -- and lost every time, because the first
     # thing it does is `gh release download` of a file that does not exist until
     # `package` finishes several minutes later.
-    needs: package
+    #
+    # `ensure-test` is the second ordering constraint, and a newer one: the
+    # environment is torn down between releases, so the app this deploys to may
+    # not exist until that job has run.
+    needs: [package, ensure-test]
     runs-on: ubuntu-24.04
     environment:
       name: test
