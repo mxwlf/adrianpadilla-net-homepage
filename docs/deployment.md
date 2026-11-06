@@ -26,6 +26,10 @@ PR ──▶ develop ──▶ release PR ──▶ merge ──▶ tag + GitHub
 
 ## What triggers what
 
+This section covers the two workflows that deploy. For every workflow, every
+job, and what each one actually executes once the `make` targets are expanded,
+see [`pipeline-map.md`](pipeline-map.md).
+
 The most important thing to know: **nothing you merge can reach production.**
 
 | Workflow           | Trigger                      | Deploys to                                                |
