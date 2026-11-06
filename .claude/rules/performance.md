@@ -11,6 +11,15 @@ paths:
 - Lighthouse CI performance budget must remain >= 0.90.
 - Use `loading="lazy"` on below-the-fold images; reserve explicit dimensions to avoid CLS.
 - CSS must be minimal and avoid unused rules; no CSS frameworks unless justified.
+- **Comment the stylesheet freely — the build minifies it.** `eleventy.config.js`
+  runs `src/assets/css/*.css` through clean-css before fingerprinting, so source
+  comments cost nothing at runtime and the filename hash still describes the
+  bytes actually served. This is not cosmetic: Lighthouse's `unminified-css`
+  audit ignores an unminified stylesheet only while its estimated savings stay
+  under a hard-coded 2048 bytes, and the file used to sit ~150 bytes under that
+  cliff, so one added comment turned the lighthouse job red. `make ci` does not
+  run Lighthouse, so `tests/unit/css-minification.test.mjs` asserts the
+  invariant where the cheap gate can see it.
 - Scripts must use `defer` or `async`; no render-blocking JS in `<head>`.
 - Self-host third-party assets for CSP simplicity and reduced external requests.
 
