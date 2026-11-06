@@ -175,13 +175,19 @@ assert_group_survives() {
 # existence, which is both what we want (no NXDOMAIN, no dangling target) and
 # the narrowest thing the record-set-scoped role needs to permit.
 
+# The query covers both spellings on purpose. az 2.88 returns this record set
+# with the keys `CNAMERecord` and `TTL`; older versions returned `cnameRecord`
+# and `ttl`. JMESPath is case-sensitive and a missing key evaluates to null, so
+# `A || B` picks whichever the installed CLI produced. Querying only the
+# camelCase form read as "no record at all" against 2.88, which would have made
+# every restore wait out its DNS timeout and then fail.
 dns_current_target() {
   az network dns record-set cname show \
     --subscription "$DNS_SUBSCRIPTION_ID" \
     --resource-group "$DNS_RESOURCE_GROUP" \
     --zone-name "$DNS_ZONE" \
     --name "$DNS_RECORD_NAME" \
-    --query 'cnameRecord.cname' \
+    --query 'CNAMERecord.cname || cnameRecord.cname' \
     --output tsv 2>/dev/null || true
 }
 
@@ -195,26 +201,24 @@ dns_point_at() {
     return 0
   fi
 
-  say "Pointing $FQDN at $target (was ${current:-<unset>})"
+  # --ttl on set-record, rather than a follow-up `record-set cname update --set
+  # ttl=`: `--set` addresses the raw payload, whose key casing differs between
+  # CLI versions (see dns_current_target), while --ttl is a declared parameter.
+  # One call, and no dependence on that casing.
+  #
+  # The TTL is kept low deliberately. Every teardown and restore moves this
+  # record, so the 3600 it was created with would make each flip an hour of
+  # stale answers.
+  say "Pointing $FQDN at $target (was ${current:-<unset>}), TTL ${RECORD_TTL}s"
   az network dns record-set cname set-record \
     --subscription "$DNS_SUBSCRIPTION_ID" \
     --resource-group "$DNS_RESOURCE_GROUP" \
     --zone-name "$DNS_ZONE" \
     --record-set-name "$DNS_RECORD_NAME" \
     --cname "$target" \
+    --ttl "$RECORD_TTL" \
     --output none ||
     die "could not write $FQDN. The deploy identity needs DNS Zone Contributor at the record-set scope -- see docs/deployment.md."
-
-  # TTL is a property of the record set, not of the record, so it is a second
-  # call. Kept low deliberately: every teardown and restore moves this record,
-  # and an hour-long TTL would make each flip an hour of stale answers.
-  az network dns record-set cname update \
-    --subscription "$DNS_SUBSCRIPTION_ID" \
-    --resource-group "$DNS_RESOURCE_GROUP" \
-    --zone-name "$DNS_ZONE" \
-    --name "$DNS_RECORD_NAME" \
-    --set "ttl=$RECORD_TTL" \
-    --output none
 }
 
 # Waits on the authoritative record rather than on a resolver. Azure DNS is the
