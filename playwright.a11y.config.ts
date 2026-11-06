@@ -18,7 +18,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npx serve dist -l 4174",
+    // See the note in playwright.config.ts: `serve` is a pinned devDependency,
+    // never a download at test time.
+    command: "npm exec --no -- serve dist -l 4174",
     port: 4174,
     reuseExistingServer: !process.env.CI,
   },

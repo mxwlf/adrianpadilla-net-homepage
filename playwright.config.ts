@@ -18,7 +18,12 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npx serve dist -l 4173",
+    // `serve` is a devDependency rather than an ad-hoc `npx serve`, for the
+    // reason release.yml gives for the SWA CLI: a project dependency is tracked
+    // by Dependabot and seen by osv-scan, while a download at test time is
+    // neither. `--no` says "never fetch it" -- but it is the dependency that
+    // makes that hold, because npx will quietly run a copy from its own cache.
+    command: "npm exec --no -- serve dist -l 4173",
     port: 4173,
     reuseExistingServer: !process.env.CI,
   },

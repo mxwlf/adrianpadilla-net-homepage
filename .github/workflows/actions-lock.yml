@@ -22,10 +22,22 @@
 
 name: Actions lockfile
 
+# Pull requests, and a weekly sweep. The push triggers that used to be here
+# re-resolved the same `uses:` lines against the same upstream repositories on a
+# tree this job had already cleared, and nothing downstream of the pull request
+# gates on the result.
+#
+# The schedule is not a like-for-like replacement, it is the part that was
+# actually missing. This check is the only one here that asks a question about
+# the OUTSIDE world — has a tag moved onto different code, has a repository been
+# renamed or taken over — and that answer changes while the tree does not. Four
+# runs per release told you nothing between releases; a weekly run does. The
+# other scheduled scans (security.yml, secrets.yml, linkcheck.yml) are on the
+# same footing.
 on:
   pull_request:
-  push:
-    branches: [main, develop]
+  schedule:
+    - cron: "29 5 * * 3" # weekly
 
 permissions:
   contents: read

@@ -18,7 +18,7 @@
     "report:html": "html-validate \"dist/**/*.html\" --formatter json",
     "report:e2e": "playwright test --reporter=json",
     "report:a11y": "playwright test -c playwright.a11y.config.ts --reporter=json",
-    "report:lighthouse": "lhci autorun --upload.target=filesystem --upload.outputDir=reports/lighthouse",
+    "report:lighthouse": "lhci collect && lhci upload --target=filesystem --outputDir=reports/lighthouse",
     "sbom": "cyclonedx-npm --output-format JSON --output-file sbom/bom.cdx.json"
   },
   "devDependencies": {
@@ -34,11 +34,13 @@
     "globals": "^17.14.0",
     "html-validate": "^11.18.0",
     "prettier": "^3.9.10",
+    "serve": "14.2.7",
     "stylelint": "^17.16.0",
     "stylelint-config-standard": "^40.0.0"
   },
   "overrides": {
     "basic-ftp": "^6.2.3",
+    "compression": "^1.8.2",
     "glob": "^14.0.2",
     "minimatch": "^11.0.1",
     "qs": "^6.17.0",

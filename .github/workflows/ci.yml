@@ -15,16 +15,27 @@
 name: CI
 
 on:
-  # Trunk-based: `main` is the only long-lived branch. Feature branches are
-  # short-lived and reach `main` only through a pull request, so the
-  # pull_request trigger is the gate — it fires for a PR from ANY head branch.
+  # The pull_request trigger is the gate. It fires for a PR from ANY head
+  # branch, and it tests the merge ref — so with
+  # `strict_required_status_checks_policy` forcing the head up to date, the tree
+  # it checks is the tree the merge will produce.
   #
-  # The push trigger covers `main` only, deliberately: adding feature branches
-  # would run the same commits twice (once for the push, once for the PR) for no
-  # extra signal.
+  # `develop` stays on the push trigger as the net behind that. Admins are
+  # bypass actors on both rulesets with bypass_mode "pull_request", which means
+  # a pull request can be merged with this check red or with a stale head, and
+  # on a single-maintainer repository that is a real path rather than a
+  # hypothetical one. This run is the only thing that would notice.
+  #
+  # `main` was here too, and is deliberately gone. The only writer to `main` is
+  # promote-prod.yml's `record` job, merging a tag whose tree has already passed
+  # this gate twice — once on the release pull request, once on the merge of it
+  # onto `develop` — and which is, by then, already live in production. A third
+  # identical run could not change anything: the deploy has happened, nothing
+  # gates on the result, and the tree is the same bytes. See
+  # docs/pipeline-map.md for the full count.
   pull_request:
   push:
-    branches: [main, develop]
+    branches: [develop]
 
 concurrency:
   group: ci-${{ github.ref }}
