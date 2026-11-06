@@ -4,6 +4,14 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.2.2](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.2.1...v1.2.2) (2026-11-06)
+
+
+### Fixes
+
+* **footer:** make the version line less prominent ([616f0a9](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/616f0a9cfb32d8f3c27c19fe88d310a3dd4ff2a0))
+* **footer:** make the version line less prominent ([b6f5a06](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/b6f5a067286a76163170da5b6c0fb87a06abe61d))
+
 ## [1.2.1](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.2.0...v1.2.1) (2026-11-05)
 
 
