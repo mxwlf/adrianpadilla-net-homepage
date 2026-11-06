@@ -4,6 +4,22 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.2.3](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.2.2...v1.2.3) (2026-11-06)
+
+
+### Performance
+
+* **build:** minify CSS so comments stop gating the Lighthouse job ([bb2eaaf](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/bb2eaaf3dcd2f706e144a48ffe4f815f9bb24512))
+* **build:** minify CSS so comments stop gating the Lighthouse job ([188fe76](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/188fe76d3962f8fe2ac45d648ab96f3550bfe05a))
+
+## [1.2.2](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.2.1...v1.2.2) (2026-11-06)
+
+
+### Fixes
+
+* **footer:** make the version line less prominent ([616f0a9](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/616f0a9cfb32d8f3c27c19fe88d310a3dd4ff2a0))
+* **footer:** make the version line less prominent ([b6f5a06](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/b6f5a067286a76163170da5b6c0fb87a06abe61d))
+
 ## [1.2.1](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.2.0...v1.2.1) (2026-11-05)
 
 
