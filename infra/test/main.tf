@@ -6,9 +6,21 @@
 # (`connectivity`, resource group `dns-prod`) and also serves the apex records
 # for the live site plus git, id, ntfy, codenomad, macwolf, ief-replay, the DKIM
 # selectors and a Tailscale challenge. Granting this configuration DNS Zone
-# Contributor there would let a bad plan delete all of it. The one CNAME the
-# test environment needs is created by hand, once, and never changes — so the
-# deploy identity holds no DNS permissions at all.
+# Contributor there would let a bad plan delete all of it.
+#
+# The CNAME the test environment needs is no longer hand-made, though, and the
+# reason is the teardown pipeline: a destroyed Static Web App releases its
+# *.azurestaticapps.net hostname, and the rebuilt one is assigned a different
+# one, so the record moves on every teardown and every restore. Leaving it
+# aimed at a released Azure hostname is a dangling-CNAME subdomain takeover.
+#
+# It is still not managed here. scripts/test-env.sh writes it with `az`, using a
+# `DNS Zone Contributor` assignment scoped to the single record set
+# (.../dnsZones/adrianpadilla.net/CNAME/test) rather than to the zone. That
+# keeps the original objection satisfied -- the identity cannot read, change or
+# delete anything else in that zone -- without pretending the record is static.
+# Putting it in this configuration would mean a provider that needs zone-level
+# read, and a `tofu destroy` that can delete a record set.
 #
 # Delegating test.adrianpadilla.net as its own zone was considered and rejected:
 # it would make the hostname a zone apex, and Azure Static Web Apps then
@@ -19,7 +31,10 @@
 # ALIAS target. Keeping `test` a subdomain keeps the verifiable path.
 #
 # No resource group. It is created out of band and referenced, so this
-# configuration never holds delete authority over the group.
+# configuration never holds delete authority over the group. That is also what
+# makes `make test-env-teardown` safe to point at `tofu destroy`: the group is
+# not in the state file, so there is nothing for destroy to delete. The script
+# asserts it rather than trusting it.
 
 data "azurerm_resource_group" "test" {
   name = var.resource_group_name
