@@ -1,8 +1,12 @@
 name: Security
+# `develop` is the default branch, so it is where code scanning results belong.
+# `main` is not listed: it only ever receives a merge of a tag whose tree has
+# already been scanned here on the release pull request and again on the merge
+# onto `develop`, so a third pass reports the same alerts against the same code.
 on:
   pull_request:
   push:
-    branches: [main, develop]
+    branches: [develop]
   schedule:
     - cron: "17 4 * * 1" # weekly
 

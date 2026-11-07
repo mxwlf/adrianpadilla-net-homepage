@@ -1,8 +1,18 @@
 name: Lighthouse CI
+# Pull requests only. This job used to run on pushes to `main` and `develop`
+# too, which meant the budgets were measured four times on one release's bytes
+# — on the release pull request, on the merge onto `develop`, while packaging
+# (`report:lighthouse`), and again on `main` after production was already
+# serving them. Nothing downstream of the pull request gates on the result.
+#
+# Lighthouse is also the one check here whose answer genuinely varies between
+# runs: it is a measurement taken on a shared runner. Re-running it on an
+# identical tree does not confirm the earlier verdict, it just rolls again.
+#
+# The job id is the `lighthouse` context that both rulesets require. Do not
+# rename it without updating .github/rulesets/*.json.
 on:
   pull_request:
-  push:
-    branches: [main, develop]
 
 permissions:
   contents: read

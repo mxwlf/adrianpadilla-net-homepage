@@ -85,7 +85,7 @@ INFRA_DIR := infra/$(INFRA_ENV)
 INFRA_DIRS := $(wildcard infra/*/)
 
 .PHONY: help setup venv check-python hooks \
-        dev build clean clean-venv fmt lint test a11y lighthouse ci \
+        dev build clean clean-venv fmt lint lint-html test a11y lighthouse ci \
         reports sbom package \
         check-tofu tf-fmt tf-fmt-check tf-validate tf-bootstrap tf-init tf-plan tf-apply \
         test-env-status test-env-teardown test-env-restore \
@@ -134,7 +134,7 @@ check-python: ## Verify the interpreter used to build .venv is new enough
 dev: ## Run local dev server with live reload
 	npm run dev
 
-build: ## Build the site into dist/, generate the sitemap, validate the HTML
+build: ## Build the site into dist/ and generate the sitemap
 	# dist/ is emptied first. Eleventy writes into its output directory without
 	# purging it, and assets are content-hash fingerprinted, so editing a file
 	# leaves the previous `main.<oldhash>.css` behind forever. Nothing referenced
@@ -145,16 +145,24 @@ build: ## Build the site into dist/, generate the sitemap, validate the HTML
 	#
 	# This is the root cause, so it is fixed here rather than in `package`: every
 	# consumer of `build` gets a dist/ that contains only what this commit emits.
+	#
+	# This target does NOT validate the HTML it produces. It used to, which made
+	# html-validate run once per build -- and `make package` builds, then runs
+	# `report:html` over the same dist/, so the same tool graded the same bytes
+	# twice in the same job, seconds apart. Validation is `lint-html` now: once
+	# in `ci`, once in report form in `reports`. See docs/pipeline-map.md.
 	rm -rf dist
 	npm run build
 	node scripts/generate-sitemap.mjs
-	npm run lint:html
 
 fmt: ## Auto-format supported files
 	npm run fmt
 
 lint: ## Run the site's linters, no auto-fix (Prettier, ESLint, Stylelint)
 	npm run lint
+
+lint-html: ## Validate the built HTML (run `make build` first)
+	npm run lint:html
 
 test: ## Run unit + e2e tests
 	npm run test:unit
@@ -220,8 +228,17 @@ clean-venv: ## Remove .venv (rebuild it with `make setup`)
 # git-hygiene checks the commit hooks run, so CI catches them on any commit
 # that reached the branch without them (e.g. made before `make setup`, or with
 # --no-verify).
+#
+# `a11y` is in this list, and was not. axe ran only inside `make package`, which
+# happens after the tag exists -- so an accessibility regression merged freely
+# and first failed while packaging a release. The project's non-negotiables say
+# a11y must not regress, which means it has to be a gate and not a report. It
+# needs a browser, like `test` does, and ci.yml already installs one.
+#
+# The order is load-bearing: `build` populates dist/, and `lint-html`, `test`
+# and `a11y` all read it.
 
-ci: hooks lint tf-fmt-check build test ## Full gate: git hygiene + lint + infra format + build + test
+ci: hooks lint tf-fmt-check build lint-html test a11y ## Full gate: git hygiene + lint + infra format + build + HTML + tests + a11y
 
 hooks: venv ## Run all pre-commit hooks against all files (same hooks as the git hooks)
 	$(PRE_COMMIT) run --all-files --show-diff-on-failure

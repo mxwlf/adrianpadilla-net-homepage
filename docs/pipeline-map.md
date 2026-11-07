@@ -15,55 +15,72 @@ wrong is worse than no map, because it gets trusted.
 
 ## The stages
 
-Seven trigger points. The two that matter most are the ends: a pull request,
-where everything is gated, and a manual dispatch, where production is reached.
+Six automated trigger points, plus the hooks on your own machine. The two that
+matter most are the ends: a pull request, where everything is gated, and a
+manual dispatch, where production is reached.
 
 ```
- local            pull_request       push develop      release:published   dispatch       push main
-──────────────────────────────────────────────────────────────────────────────────────────────────────
- pre-commit       ci            *    ci                package              promote    │  ci            *
- commit-msg       lighthouse    *    lighthouse        ├─ ensure-test       └─ record ─┼▶ lighthouse    *
- make ci (hand)   dependency-   *    codeql            └─ deploy-test                  │  codeql
-                  review             osv-scan                                          │  osv-scan      *
-                  osv-scan      *    gitleaks          (test env; no                   │  gitleaks      *
-                  gitleaks      *    actions-lock       reviewer, so it                │  actions-lock
-                  actions-lock       infra (paths)      just goes)                     │
-                  infra (paths)      release-please                                    │
-                  lychee                                                               │
-                                                     ─── no automatic path ────────────┘
-                                                         crosses into production
+ local            pull_request       push develop      release:published    dispatch + approval
+─────────────────────────────────────────────────────────────────────────────────────────────────
+ pre-commit       ci            *    ci                package              promote
+ commit-msg       lighthouse    *    codeql            ├─ ensure-test       └─ record ─▶ main
+ make ci (hand)   dependency-   *    osv-scan          └─ deploy-test                    (no jobs)
+                  review             gitleaks
+                  osv-scan      *    infra (paths)     test.adrianpadilla   adrianpadilla.net
+                  gitleaks      *    release-please    .net — no reviewer,   — approval required,
+                  actions-lock                         so it just goes       and no automatic
+                  infra (paths)                                              path reaches here
+                  lychee
 
  workflow_dispatch, on its own:  test-env  (teardown | restore | status)
 
  weekly:  codeql + osv-scan (Mon 04:17)   gitleaks (Sun 03:41)   lychee (Tue 02:13)
-          monitor: prod Lighthouse + header check (Mon 06:00)
+          actions-lock (Wed 05:29)        monitor: prod Lighthouse + headers (Mon 06:00)
           dependabot: npm, actions (7-day cooldown on actions)
 
  * = required status check on both develop-protection and main-protection
 ```
 
-One structural fact the diagram in `deployment.md` does not show: **`record`
-advancing `main` re-enters the pipeline from the top.** It pushes with a GitHub
-App token, and unlike `GITHUB_TOKEN` that does start workflows — the same
-mechanism `release-please.yml` depends on. So the full pull-request suite runs
-once more against a tree that is already serving production traffic.
+Two things about the shape of that table are deliberate, and both were once the
+other way round.
+
+**Nothing runs on a push to `main`.** `record` advancing `main` does re-enter
+the pipeline — it pushes with a GitHub App token, and unlike `GITHUB_TOKEN`
+that starts workflows, which is the same mechanism `release-please.yml` depends
+on. Six jobs used to fire there: the full pull-request suite, against a tree
+that had already passed it twice and was by then already serving production
+traffic. No `push: [main]` trigger remains in any workflow.
+
+**`lighthouse` and `actions-lock` run on pull requests only.** The gate is the
+pull request; a second run on the merge commit asks the same question of the
+same bytes. `actions-lock` gained a weekly schedule in exchange, because it is
+the one check whose answer changes without the tree changing — a tag moved onto
+different code, a repository renamed or taken over.
 
 ## What triggers what
 
-| Workflow             | Trigger                                       | Jobs                                      |
-| -------------------- | --------------------------------------------- | ----------------------------------------- |
-| `ci.yml`             | `pull_request`, push `main`/`develop`         | `ci`                                      |
-| `lighthouse.yml`     | `pull_request`, push `main`/`develop`         | `lighthouse`                              |
-| `security.yml`       | `pull_request`, push `main`/`develop`, weekly | `dependency-review`, `codeql`, `osv-scan` |
-| `secrets.yml`        | `pull_request`, push `main`/`develop`, weekly | `gitleaks`                                |
-| `actions-lock.yml`   | `pull_request`, push `main`/`develop`         | `actions-lock`                            |
-| `infra.yml`          | `pull_request` + push, `paths:` filtered      | `infra`                                   |
-| `linkcheck.yml`      | `pull_request`, weekly                        | `lychee`                                  |
-| `release-please.yml` | push `develop`                                | `release-please`                          |
-| `release.yml`        | `release: published`                          | `package` → `ensure-test` → `deploy-test` |
-| `promote-prod.yml`   | `workflow_dispatch` **only**                  | `promote` → `record`                      |
-| `test-env.yml`       | `workflow_dispatch` **only**                  | `test-env`                                |
-| `monitor.yml`        | weekly                                        | `lighthouse`, `security-headers`          |
+| Workflow             | Trigger                                            | Jobs                                      |
+| -------------------- | -------------------------------------------------- | ----------------------------------------- |
+| `ci.yml`             | `pull_request`, push `develop`                     | `ci`                                      |
+| `lighthouse.yml`     | `pull_request`                                     | `lighthouse`                              |
+| `security.yml`       | `pull_request`, push `develop`, weekly             | `dependency-review`, `codeql`, `osv-scan` |
+| `secrets.yml`        | `pull_request`, push `develop`, weekly             | `gitleaks`                                |
+| `actions-lock.yml`   | `pull_request`, weekly                             | `actions-lock`                            |
+| `infra.yml`          | `pull_request` + push `develop`, `paths:` filtered | `infra`                                   |
+| `linkcheck.yml`      | `pull_request`, weekly                             | `lychee`                                  |
+| `release-please.yml` | push `develop`                                     | `release-please`                          |
+| `release.yml`        | `release: published`                               | `package` → `ensure-test` → `deploy-test` |
+| `promote-prod.yml`   | `workflow_dispatch` **only**                       | `promote` → `record`                      |
+| `test-env.yml`       | `workflow_dispatch` **only**                       | `test-env`                                |
+| `monitor.yml`        | weekly                                             | `lighthouse`, `security-headers`          |
+
+`ci`, `codeql`, `osv-scan` and `gitleaks` keep their push trigger on `develop`,
+and that is not an oversight about identical trees. Admins are bypass actors on
+both rulesets with `bypass_mode: "pull_request"`, so a pull request can be
+merged with a required check red or with a stale head — on a repository with one
+maintainer that is a real path, not a hypothetical one. The push run is the only
+thing that would notice. `codeql` and `osv-scan` have a second reason: code
+scanning results belong to the default branch, which is `develop`.
 
 Two jobs are deliberately **not** required checks, for reasons that are easy to
 undo by accident:
@@ -75,7 +92,8 @@ undo by accident:
 
 `actions-lock` has neither problem. It runs unconditionally on every pull
 request and is not required either; its own header comment says it was written
-that way so it _could_ be required.
+that way so it _could_ be required. Making it required is a one-line change to
+both rulesets followed by `make rulesets-apply`.
 
 ## Inventory
 
@@ -87,17 +105,23 @@ checkout · setup-node (npm cache) · setup-python 3.14 · setup-opentofu 1.13.8
 cache `~/.cache/pre-commit` · `npm ci` · `playwright install --with-deps chromium`
 · **`make ci`** · upload `dist` artifact
 
-`make ci` is `hooks lint tf-fmt-check build test`:
+`make ci` is `hooks lint tf-fmt-check build lint-html test a11y`:
 
 | Step           | Commands                                                                                                                                                                                                                                                                                   |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `hooks`        | `pre-commit run --all-files` — 12 hooks: sync-pre-commit-deps, trailing-whitespace, end-of-file-fixer, check-yaml, check-added-large-files, check-case-conflict, check-illegal-windows-names, check-merge-conflict, detect-private-key, fix-byte-order-marker, mixed-line-ending, gitleaks |
 | `lint`         | `prettier . --check` · `eslint .` · `stylelint src/assets/css/**/*.css`                                                                                                                                                                                                                    |
 | `tf-fmt-check` | `tofu fmt -recursive -check -diff infra`                                                                                                                                                                                                                                                   |
-| `build`        | `rm -rf dist` · `eleventy` · `scripts/generate-sitemap.mjs` · `html-validate dist/**/*.html`                                                                                                                                                                                               |
+| `build`        | `rm -rf dist` · `eleventy` · `scripts/generate-sitemap.mjs`                                                                                                                                                                                                                                |
+| `lint-html`    | `html-validate dist/**/*.html`                                                                                                                                                                                                                                                             |
 | `test`         | `node --test` · `playwright test` (serves `dist` on :4173)                                                                                                                                                                                                                                 |
+| `a11y`         | `playwright test -c playwright.a11y.config.ts` — axe-core (serves `dist` on :4174)                                                                                                                                                                                                         |
 
-`a11y` is a `make` target but is **not** in `ci` — see [Gaps](#gaps).
+The order matters: `build` populates `dist/`, and the three steps after it read
+it. `lint-html` is separate from `build` so that validation happens once per
+tree rather than once per build, and `a11y` is in this list rather than only in
+`make package`, so an accessibility regression fails on the pull request that
+introduces it instead of while packaging the release that contains it.
 
 ### `lighthouse` — lighthouse.yml
 
@@ -134,13 +158,19 @@ strip the leading `v` from the tag · **`make package`** · `tar -czf` ·
 
 `make package` is `reports sbom` then the assembly:
 
-| Step                | Commands                                                                                                                                                                       |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `reports` → `build` | the same `rm -rf dist` · `eleventy` · sitemap · `html-validate` as `make ci`                                                                                                   |
-| `reports`           | `rm -rf reports` · `report:html` (html-validate, JSON) · `report:e2e` (Playwright, JSON) · `report:a11y` (axe, JSON) · `report:lighthouse` (`lhci autorun`, filesystem upload) |
-| `sbom`              | `cyclonedx-npm` → `sbom/bom.cdx.json`                                                                                                                                          |
-| assembly            | `release-package.mjs`: `site/` (minus `staticwebapp.config.json`), `host-config/{prod,test}/`, `reports/`, `sbom/`, `SHA256SUMS` over `site/`+`sbom/`, `manifest.json`         |
-| verify              | `sha256sum -c SHA256SUMS`                                                                                                                                                      |
+| Step                | Commands                                                                                                                                                                    |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reports` → `build` | the same `rm -rf dist` · `eleventy` · sitemap as `make ci`                                                                                                                  |
+| `reports`           | `rm -rf reports` · `report:html` (html-validate, JSON) · `report:e2e` (Playwright, JSON) · `report:a11y` (axe, JSON) · `report:lighthouse` (`lhci collect` + `lhci upload`) |
+| `sbom`              | `cyclonedx-npm` → `sbom/bom.cdx.json`                                                                                                                                       |
+| assembly            | `release-package.mjs`: `site/` (minus `staticwebapp.config.json`), `host-config/{prod,test}/`, `reports/`, `sbom/`, `SHA256SUMS` over `site/`+`sbom/`, `manifest.json`      |
+| verify              | `sha256sum -c SHA256SUMS`                                                                                                                                                   |
+
+`report:lighthouse` collects and uploads but does **not** assert. It was
+`lhci autorun`, which includes `assert`, so packaging re-graded the budgets that
+the required `lighthouse` check had already passed on the same tree — and could
+fail a tagged release on a measurement that varies between runs. The reports
+still travel with the artifact; the verdict belongs to the pull request.
 
 ### `ensure-test` — release.yml
 
@@ -214,35 +244,42 @@ runs `make test-env-{action}`:
 Because `strict_required_status_checks_policy` forces the head branch up to date
 and only merge commits are allowed, four events share one **byte-identical
 tree**: the release pull request, the merge of it onto `develop`, the tag, and
-`main` after `record`. Counted on that tree:
+`main` after `record`. That is the measuring stick — work counted across those
+four events is work done twice or more on the same bytes.
 
-| Work                           | Runs   | Can the result differ?                                                                      |
-| ------------------------------ | ------ | ------------------------------------------------------------------------------------------- |
-| `eleventy` build + sitemap     | **7**  | No. `make build` starts with `rm -rf dist` precisely so output is a function of the commit. |
-| `html-validate` over `dist/**` | **8**  | No. Once per build, plus `report:html`.                                                     |
-| Playwright e2e                 | **4**  | Only by flake (2 retries in CI).                                                            |
-| `pre-commit run --all-files`   | **3**  | No.                                                                                         |
-| `tofu fmt -check`              | **3**  | No.                                                                                         |
-| `npm ci`                       | **8**  | No.                                                                                         |
-| Lighthouse collections         | **12** | **Yes** — it is a measurement on a shared runner. 4 × `numberOfRuns: 3`.                    |
-| `gh attestation verify`        | **3**  | No, and that is the point. See below.                                                       |
-| axe / a11y                     | **1**  | Runs only inside `make package`, never as a gate.                                           |
+The `Was` column is what each number was before the triggers were pruned, kept
+because it is the evidence for why they were.
 
-End to end, one change reaching production runs **39 jobs** (41 when it touches
-`infra/**` or the `Makefile`):
+| Work                           | Runs  | Was | Can the result differ?                                                                      |
+| ------------------------------ | ----- | --- | ------------------------------------------------------------------------------------------- |
+| `eleventy` build + sitemap     | **4** | 7   | No. `make build` starts with `rm -rf dist` precisely so output is a function of the commit. |
+| `html-validate` over `dist/**` | **3** | 8   | No. It left `build` and became `lint-html`, so it runs per tree, not per build.             |
+| Playwright e2e                 | **3** | 4   | Only by flake (2 retries in CI).                                                            |
+| axe / a11y                     | **3** | 1   | Only by flake. It is a gate now; it used to run only while packaging.                       |
+| `pre-commit run --all-files`   | **2** | 3   | No.                                                                                         |
+| `tofu fmt -check`              | **2** | 3   | No.                                                                                         |
+| `npm ci`                       | **5** | 8   | No.                                                                                         |
+| Lighthouse collections         | **6** | 12  | **Yes** — it is a measurement on a shared runner. `numberOfRuns: 3`, now twice not 4×.      |
+| `gh attestation verify`        | **3** | 3   | No, and that is the point. See below.                                                       |
+
+End to end, one change reaching production runs **29 jobs**, down from 39 (31
+and 41 when it touches `infra/**` or the `Makefile`):
 
 | Event                  | Jobs                                                                        |     |
 | ---------------------- | --------------------------------------------------------------------------- | --- |
 | feature pull request   | ci, lighthouse, dependency-review, osv-scan, gitleaks, actions-lock, lychee | 7   |
-| merge → push `develop` | ci, lighthouse, codeql, osv-scan, gitleaks, actions-lock, release-please    | 7   |
+| merge → push `develop` | ci, codeql, osv-scan, gitleaks, release-please                              | 5   |
 | release pull request   | ci, lighthouse, dependency-review, osv-scan, gitleaks, actions-lock, lychee | 7   |
-| merge → push `develop` | ci, lighthouse, codeql, osv-scan, gitleaks, actions-lock, release-please    | 7   |
+| merge → push `develop` | ci, codeql, osv-scan, gitleaks, release-please                              | 5   |
 | `release: published`   | package, ensure-test, deploy-test                                           | 3   |
 | promote + approve      | promote, record                                                             | 2   |
-| `record` → push `main` | ci, lighthouse, codeql, osv-scan, gitleaks, actions-lock                    | 6   |
+| `record` → push `main` | —                                                                           | 0   |
 
-The last row runs entirely after production is live, on a tree that has already
-been through the same checks twice.
+The ten jobs that went were not checks anyone had decided to run at those
+points; they were the default `push: [main, develop]` trigger repeated across
+five workflow files. Two gates were added in the same change — `a11y` on every
+pull request, `actions-lock` weekly — so coverage went up while the job count
+went down.
 
 ## Repetition that is deliberate
 
@@ -272,41 +309,41 @@ The two smoke tests are also mirror images rather than duplicates:
 `deploy-test` requires `X-Robots-Tag: noindex`, `promote` forbids it. Each
 proves the right `host-config/` directory was selected.
 
-## Gaps
+## Still open
 
-Found while tracing the above, and listed here because they are the kind of
-thing a map is for.
+Found while tracing the above and deliberately left alone, each with the reason.
 
-- **axe runs only at release time.** `make ci` is
-  `hooks lint tf-fmt-check build test`, and `test` is unit + e2e. No workflow
-  calls `make a11y`, so an accessibility regression merges freely and first
-  fails when `make package` runs `report:a11y` — after the tag exists. The
-  project's non-negotiables say a11y tests must not regress.
-- **`npx serve` is an unpinned download.** Both Playwright configs use
-  `webServer: npx serve dist`, and `serve` is in neither `package.json` nor
-  `package-lock.json`, so it is fetched at test time on every e2e and a11y run.
-  `release.yml` and `promote-prod.yml` argue against exactly this for the SWA
-  CLI: a project dependency is tracked by Dependabot and seen by `osv-scan`,
-  an ad-hoc `npx` download is neither.
-- **Nothing consumes an artifact.** `ci`, `lighthouse` and `monitor` all call
-  `upload-artifact`; `download-artifact` appears nowhere. `lighthouse` rebuilds
-  the `dist` that `ci` just uploaded.
-- **`report:lighthouse` asserts the budgets a second time.** `lhci autorun`
-  includes `assert`, so packaging can fail a tagged release on a measurement
-  that already passed as a required check on the same tree.
-- **`monitor.yml`'s header check cannot fail** — warning-only, so it is a green
-  check that reports nothing.
+- **`lighthouse` still builds `dist/` itself**, and nothing consumes the `dist`
+  artifact `ci` uploads — `download-artifact` appears in no workflow. The
+  obvious fix is the wrong one: within a workflow, reusing the artifact means
+  `needs: ci`, which puts a required check behind the slowest job and delays the
+  signal by minutes to save about one minute of CPU. The duplicate build buys
+  parallelism. Leave it until the build is slow enough for the trade to flip.
+- **`ensure-test` waits for `package`** although it needs nothing from it. The
+  sequencing is deliberate — do not rebuild an environment for a release that
+  cannot be packaged — but it does serialise a DNS and certificate wait behind
+  four minutes of packaging. Running them in parallel with
+  `deploy-test: needs: [package, ensure-test]` unchanged would be safe and
+  faster; it was left out of the trigger pruning because it is a different kind
+  of change.
+- **`monitor.yml`'s header check cannot fail** — it emits `::warning::` only, so
+  it is a green check that reports nothing. Making it fail is a one-line change,
+  but it would start paging on production drift, which is a decision rather than
+  a cleanup.
+- **The backend-config heredoc is duplicated** between `release.yml`'s
+  `ensure-test` and `test-env.yml`: about thirty lines of identical shell in two
+  workflow files, which is also the kind of logic the project constitution says
+  belongs in a script. Worth extracting to `scripts/`; it touches the deploy
+  path, so it wants its own change.
 - **`ubuntu-latest` in five workflows** (security, secrets, lighthouse,
   linkcheck, monitor) against the pinned `ubuntu-24.04` everywhere else.
   `ci.yml` explains why the pin matters: the label is remapped on GitHub's
   schedule, not yours.
 - **No `concurrency` group** on lighthouse, security, secrets or linkcheck, so
   rapid pushes stack instead of superseding.
-- **The backend-config heredoc is duplicated** between `release.yml`'s
-  `ensure-test` and `test-env.yml`, about thirty lines of identical shell in two
-  workflow files — which is also the kind of logic the project constitution says
-  belongs in a script.
+- **`actions-lock` is not a required check**, though it runs on every pull
+  request and its own comment says it was written to be one.
 - **`codeql`'s `autobuild` is a no-op** for `languages: javascript`.
-- **`infra.yml`'s `paths:` filter does not include `scripts/test-env.sh`**, so a
-  change to the script that drives `infra/test/` does not trigger infra
-  validation.
+- **`lighthouse.yml` uploads to `temporary-public-storage`** on every pull
+  request, which publishes a report of the built site to an unlisted public URL.
+  Harmless for a public site; worth knowing it happens.

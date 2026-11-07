@@ -365,10 +365,14 @@ Runs:
 ### Build and validate HTML
 
 ```bash
-make build
+make build       # compile src/ -> dist/ and generate sitemap.xml
+make lint-html   # validate the built HTML with html-validate
 ```
 
-Compiles `src/` → `dist/`, generates `sitemap.xml`, then validates the built HTML with `html-validate`. Fix any reported errors before publishing.
+`make build` empties `dist/`, compiles `src/` into it and generates
+`sitemap.xml`. `make lint-html` validates what it produced; run it after a
+build, or let `make ci` do both in order. Fix any reported errors before
+publishing.
 
 ### Unit and e2e tests
 
