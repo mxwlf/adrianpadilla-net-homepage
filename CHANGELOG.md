@@ -4,6 +4,14 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.3.3](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.3.2...v1.3.3) (2026-11-07)
+
+
+### Fixes
+
+* **infra:** bind the test hostname with az instead of OpenTofu ([8dfb4b1](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/8dfb4b1d13c83352b81cd64d4523d5249affb783))
+* **infra:** bind the test hostname with az instead of OpenTofu ([f2f6318](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/f2f6318140f1b6ba642799ad94ae8765f2788561))
+
 ## [1.3.2](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.3.1...v1.3.2) (2026-11-07)
 
 
