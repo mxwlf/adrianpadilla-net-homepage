@@ -44,8 +44,17 @@
 - A required check's `context` is a workflow job id — renaming one without the
   other makes PRs hang forever. A job with a `paths:` filter must never be
   required, for the same reason.
-- `infra/test/` and `infra/prod/` describe both environments in OpenTofu, in the
-  same shape. Every `tf-*` target takes `INFRA_ENV`, defaulting to `test`:
+- `infra/test/` and `infra/prod/` describe both environments in OpenTofu, in
+  nearly the same shape. The one deviation is deliberate and is about **who
+  applies**, not about what the environments are: `infra/prod/` manages its
+  `www` custom-domain binding as a resource, `infra/test/` does not manage its
+  binding at all. The provider polls a subscription-level operation status after
+  creating one, and the test identity's `Contributor` stops at its resource
+  group, so CI gets a 403 — while prod is only ever applied by a human with
+  broader rights. `scripts/test-env.sh` binds it with `az staticwebapp hostname
+set --no-wait` instead. Do not "restore the symmetry" by adding the resource
+  back or by widening the identity to subscription scope. See @docs/deployment.md.
+  Every `tf-*` target takes `INFRA_ENV`, defaulting to `test`:
   `make tf-plan INFRA_ENV=prod`. Neither owns any DNS — the
   `adrianpadilla.net` zone also serves several unrelated services, so no
   OpenTofu configuration here is allowed zone-level DNS rights and every

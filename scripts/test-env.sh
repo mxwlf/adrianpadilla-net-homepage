@@ -73,7 +73,6 @@ set -euo pipefail
 # environment as a variable; this one must not, because `make test-env-teardown
 # INFRA_ENV=prod` would otherwise be a one-command outage.
 INFRA_DIR='infra/test'
-SWA_RESOURCE='azurerm_static_web_app.test'
 
 DNS_RESOURCE_GROUP="${DNS_RESOURCE_GROUP:-dns-prod}"
 DNS_ZONE="${DNS_ZONE:-adrianpadilla.net}"
@@ -243,31 +242,78 @@ dns_wait_for() {
 }
 
 # ---------------------------------------------------------------------------
-# Custom domain readiness
+# The custom domain binding
 # ---------------------------------------------------------------------------
-# A freshly bound hostname is not immediately serveable: Azure has to issue a
-# certificate for it, and until it does, HTTPS to the name fails the handshake
-# rather than returning an error page. The provider's create does wait, but this
-# is checked explicitly anyway — the next thing to run is release.yml's smoke
-# test, whose `curl --retry` budget is about a minute, and a TLS failure there
-# would look like a bad deploy rather than a cold certificate.
+# This is done with `az`, not with an azurerm_static_web_app_custom_domain
+# resource, because the provider's create polls a SUBSCRIPTION-level operation
+# status and the deploy identity's Contributor assignment stops at the resource
+# group. infra/test/main.tf has the full reasoning and the 403 it came from.
+#
+# Everything here stays inside the grant: `hostname set` writes
+# .../resourceGroups/<rg>/providers/Microsoft.Web/staticSites/<app>, and
+# `hostname show` reads the same path.
 
-swa_wait_ready() {
-  local app group waited=0 status
+# Asked of Azure, not of the state file. The binding is not a tofu resource any
+# more, so Azure is the only thing that knows whether it exists. Empty when the
+# app is gone or nothing is bound; otherwise the provisioning state, which is
+# `Ready` once the certificate has been issued.
+swa_domain_status() {
+  local app group
+  app="$(tf_output static_web_app_name)"
+  group="$(tf_output resource_group_name)"
+  [[ -n "$app" && -n "$group" ]] || return 0
+
+  az staticwebapp hostname show \
+    --name "$app" \
+    --resource-group "$group" \
+    --hostname "$FQDN" \
+    --query 'status' \
+    --output tsv 2>/dev/null || true
+}
+
+# Idempotent, and it has to be: `set` is a PUT, and the state this recovers from
+# is a half-made binding. The provider's failed create had already issued its
+# PUT before the poll was refused, so the binding may well exist in Azure while
+# nothing in the state file mentions it. Re-issuing is how that converges --
+# only `Ready` is skipped, because `Validating` or `Failed` both want another
+# attempt.
+swa_bind_domain() {
+  local app group status
   app="$(tf_output static_web_app_name)"
   group="$(tf_output resource_group_name)"
   [[ -n "$app" && -n "$group" ]] || die 'cannot read the app name or resource group from the OpenTofu outputs.'
 
-  say "Waiting for $FQDN to report Ready on $app"
+  status="$(swa_domain_status)"
+  if [[ "$status" == 'Ready' ]]; then
+    say "$FQDN is already bound to $app"
+    return 0
+  fi
+
+  # --no-wait is the whole point: it issues the PUT and does not follow the
+  # long-running-operation poll that returns 403 at this scope. swa_wait_ready
+  # below does the waiting against a path the identity can read.
+  say "Binding $FQDN to $app (cname-delegation)${status:+, currently $status}"
+  az staticwebapp hostname set \
+    --name "$app" \
+    --resource-group "$group" \
+    --hostname "$FQDN" \
+    --validation-method cname-delegation \
+    --no-wait \
+    --output none ||
+    die "could not bind $FQDN to $app. The deploy identity needs Contributor on the resource group -- see docs/deployment.md."
+}
+
+# A freshly bound hostname is not immediately serveable: Azure has to issue a
+# certificate for it, and until it does, HTTPS to the name fails the handshake
+# rather than returning an error page. Nothing waits on that for us now that
+# --no-wait is doing the binding, and the next thing to run is release.yml's
+# smoke test, whose `curl --retry` budget is about a minute -- a TLS failure
+# there would look like a bad deploy rather than a cold certificate.
+swa_wait_ready() {
+  local waited=0 status
+  say "Waiting for $FQDN to report Ready"
   while :; do
-    status="$(
-      az staticwebapp hostname show \
-        --name "$app" \
-        --resource-group "$group" \
-        --hostname "$FQDN" \
-        --query 'status' \
-        --output tsv 2>/dev/null || true
-    )"
+    status="$(swa_domain_status)"
     case "$status" in
       Ready)
         echo "    ready after ${waited}s"
@@ -293,14 +339,14 @@ cmd_status() {
   local app host domain target
   app="$(tf_output static_web_app_name)"
   host="$(tf_output default_host_name)"
-  domain="$(tf_output custom_domain)"
+  domain="$(swa_domain_status)"
   target="$(dns_current_target)"
 
   echo
   if [[ -n "$app" ]]; then
     echo "Static Web App   $app"
     echo "Azure hostname   ${host:-<unknown>}"
-    echo "Custom domain    ${domain:-<not bound>}"
+    echo "Custom domain    $FQDN (${domain:-not bound})"
   else
     echo 'Static Web App   torn down (nothing in the OpenTofu state)'
   fi
@@ -309,10 +355,16 @@ cmd_status() {
 
   if [[ -z "$app" ]]; then
     echo 'State: TORN DOWN. The next release restores it, or run `make test-env-restore`.'
-  elif [[ -n "$host" && "${target%.}" == "${host%.}" ]]; then
-    echo 'State: UP, and DNS points at it.'
-  else
+  elif [[ "${target%.}" != "${host%.}" ]]; then
     echo 'State: the app exists but DNS points somewhere else. `make test-env-restore` reconciles it.'
+  elif [[ "$domain" != 'Ready' ]]; then
+    # Reported separately from the DNS mismatch above, because this is the state
+    # release v1.3.2 left behind: app up, DNS correct, binding never completed.
+    # "UP, and DNS points at it" would have been true and useless.
+    echo "State: the app is up and DNS points at it, but $FQDN is ${domain:-not bound}."
+    echo '       HTTPS to that name will not serve until it reads Ready. `make test-env-restore` reconciles it.'
+  else
+    echo 'State: UP, and DNS points at it.'
   fi
 }
 
@@ -321,8 +373,14 @@ cmd_status() {
 # ---------------------------------------------------------------------------
 # DNS moves FIRST. The alternative -- destroy, then repoint -- leaves a window
 # in which the record names a released Azure hostname that anyone can claim.
-# The custom-domain binding deletes fine with the record already moved; Azure
-# does not re-validate on the way out.
+# Azure does not re-validate the binding on the way out, so moving the record
+# first costs nothing.
+#
+# The binding is no longer destroyed explicitly, because it is no longer a tofu
+# resource: deleting the Static Web App takes its custom domains with it. The
+# dispatched teardown before release v1.3.2 did exactly that and succeeded,
+# which is the evidence that DELETE on the app does not poll the
+# subscription-level path that CREATE on the binding does.
 
 cmd_teardown() {
   tf_init
@@ -357,14 +415,21 @@ cmd_teardown() {
 # restore
 # ---------------------------------------------------------------------------
 # Idempotent, because release.yml runs it before every deploy to test. When the
-# environment is already up and the record already matches, it costs one no-op
-# plan and one DNS read.
+# environment is already up, the record matches and the binding reads Ready, it
+# costs one no-op plan, one DNS read and one hostname read.
 #
-# The rebuild is two applies, for the reason the first-ever apply was two:
-# `azurerm_static_web_app_custom_domain` validates by `cname-delegation`, so the
-# CNAME has to resolve to the app's hostname before the binding can be created
-# -- and the hostname is not known until the app exists. A fresh app gets a
-# fresh `*.azurestaticapps.net` name, so this is not a first-run special case.
+# ONE APPLY, WHICH IT DID NOT USED TO BE. The rebuild needed two targeted
+# applies while the binding was an azurerm resource: `cname-delegation` means
+# the CNAME has to resolve to the app's hostname before the binding can
+# validate, and the hostname is not known until the app exists -- so the app had
+# to be applied alone, then DNS moved, then the rest applied. With the binding
+# out of the configuration (see infra/test/main.tf) there is one resource left,
+# so the ordering is expressed by the steps below instead of by `-target`. That
+# also retires the "Resource targeting is in effect" warning every restore used
+# to print.
+#
+# A rebuilt app still gets a fresh `*.azurestaticapps.net` hostname, so moving
+# DNS is not a first-run special case.
 
 cmd_restore() {
   tf_init
@@ -373,26 +438,25 @@ cmd_restore() {
   host="$(tf_output default_host_name)"
   target="$(dns_current_target)"
 
-  if [[ -n "$host" && -n "$(tf_output custom_domain)" && "${target%.}" == "${host%.}" ]]; then
+  if [[ -n "$host" && "${target%.}" == "${host%.}" && "$(swa_domain_status)" == 'Ready' ]]; then
     say "Test environment is already up and $FQDN points at it"
     tf apply -input=false -auto-approve
     return 0
   fi
 
-  say "Creating the Static Web App ($SWA_RESOURCE only)"
-  # Targeted, because the domain binding in the same configuration cannot
-  # succeed until DNS has been moved -- which needs the hostname this creates.
-  tf apply -input=false -auto-approve -target="$SWA_RESOURCE"
+  say 'Applying infra/test'
+  tf apply -input=false -auto-approve
 
   host="$(tf_output default_host_name)"
   [[ -n "$host" ]] || die 'the apply produced no default_host_name output.'
 
+  # In this order, always: the binding validates by cname-delegation, so the
+  # record has to resolve to the app before the PUT, and Azure checks it
+  # asynchronously after --no-wait returns.
   dns_point_at "$host"
   dns_wait_for "$host"
 
-  say 'Binding the custom domain'
-  tf apply -input=false -auto-approve
-
+  swa_bind_domain
   swa_wait_ready
 
   echo

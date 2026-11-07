@@ -16,10 +16,13 @@ output "default_host_name" {
   value       = azurerm_static_web_app.test.default_host_name
 }
 
-output "custom_domain" {
-  description = "Hostname the test environment answers on."
-  value       = azurerm_static_web_app_custom_domain.test.domain_name
-}
+# No `custom_domain` output. It used to read the bound hostname off the
+# azurerm_static_web_app_custom_domain resource, and scripts/test-env.sh treated
+# a non-empty value as "the binding exists". Now that the binding is made with
+# `az` (see main.tf), the only honest answer to that question comes from Azure,
+# so the script asks `az staticwebapp hostname show` instead. An output echoing
+# var.custom_domain back would have been worse than none: always non-empty, and
+# therefore always claiming a binding that may not be there.
 
 output "cname_record_to_create" {
   description = "The DNS record the connectivity subscription must hold. Deliberately not managed here — see main.tf. `make test-env-restore` writes it; this output is what to create by hand on a first-ever apply, before that target can run."
