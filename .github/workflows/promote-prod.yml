@@ -184,23 +184,56 @@ jobs:
             --env production
 
       - name: Smoke-test production
+        env:
+          CONFIG_WAIT_SECONDS: "180"
         run: |
-          echo "GET https://adrianpadilla.net/"
-          headers=$(curl -fsS --retry 6 --retry-delay 10 --retry-all-errors -D - -o /dev/null https://adrianpadilla.net/)
-          echo "$headers"
+          url=https://adrianpadilla.net/
+          echo "GET $url"
+
+          # Polled for the reason release.yml's test smoke test documents at
+          # length: the content and staticwebapp.config.json reach the edge
+          # independently, so a request right after a deploy can get HTTP 200
+          # with none of the configured headers, and `--retry-all-errors` will
+          # not retry a 200.
+          #
+          # THE STAKE IS HIGHER HERE. By the time this step runs, production has
+          # already been updated. A false failure does not stop a bad deploy, it
+          # reports a good one as broken and skips `record`, which leaves `main`
+          # claiming an older version is live. That is the same end state as the
+          # stray `production_branch` bug this file warns about above, reached a
+          # different way.
+          #
+          # Waiting on the CSP first and asserting noindex second is deliberate.
+          # Before any config is live there is nothing to judge: the noindex
+          # check would pass vacuously on a response that has no headers at all,
+          # so it would only ever be a real check once the CSP proves a config
+          # arrived.
+          deadline=$(( SECONDS + CONFIG_WAIT_SECONDS ))
+          while :; do
+            headers=$(curl -fsS -D - -o /dev/null "$url") || headers=''
+
+            if printf '%s' "$headers" | grep -qi '^content-security-policy:'; then
+              echo "$headers"
+              break
+            fi
+
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "$headers"
+              echo "::error::no Content-Security-Policy after ${CONFIG_WAIT_SECONDS}s — host-config was not applied"
+              exit 1
+            fi
+
+            echo "host-config not live yet after ${SECONDS}s, waiting"
+            sleep 10
+          done
 
           # The inverse of the test environment's assertion: production must be
           # indexable. If noindex is here, the wrong host-config shipped, and
           # the live site would quietly fall out of search results.
-          if echo "$headers" | grep -qi '^x-robots-tag:.*noindex'; then
+          if printf '%s' "$headers" | grep -qi '^x-robots-tag:.*noindex'; then
             echo "::error::production is serving X-Robots-Tag: noindex — the test host-config was deployed"
             exit 1
           fi
-
-          echo "$headers" | grep -qi '^content-security-policy:' || {
-            echo "::error::no Content-Security-Policy — host-config was not applied"
-            exit 1
-          }
 
       - name: Assert no staging environments were created
         env:

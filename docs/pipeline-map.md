@@ -206,8 +206,9 @@ checkout the tag · setup-node · `npm ci` (for the pinned SWA CLI) ·
 this workflow · `sha256sum -c SHA256SUMS` · azure/login (test identity) ·
 `az staticwebapp secrets list` for the deployment token ·
 `swa deploy package/site --swa-config-location package/host-config/test --env production`
-· smoke test: `X-Robots-Tag: noindex` **present**, canonical still points at
-production · assert no Static Web Apps staging environments exist
+· smoke test: poll up to 180s until `X-Robots-Tag: noindex` is **present**, then
+assert the canonical still points at production · assert no Static Web Apps
+staging environments exist
 
 ### `promote` and `record` — promote-prod.yml
 
@@ -220,8 +221,15 @@ a semantic version · `gh release download` + untar · **`gh attestation verify`
 version, check `siteSha256` is a 64-character hex digest before it reaches
 `$GITHUB_OUTPUT` · azure/login (production identity) · fetch the deployment token
 · `swa deploy package/site --swa-config-location package/host-config/prod --env production`
-· smoke test: `X-Robots-Tag: noindex` **absent**, `Content-Security-Policy`
-present · assert no staging environments
+· smoke test: poll up to 180s until `Content-Security-Policy` is present, then
+assert `X-Robots-Tag: noindex` is **absent** · assert no staging environments
+
+Both smoke tests poll on the assertion rather than retrying the request. `swa
+deploy` returns when the upload is accepted, and the content and
+`staticwebapp.config.json` reach the edge independently, so a request in between
+gets HTTP 200 with none of the configured headers. `curl --retry-all-errors`
+never fires on that, because a 200 is not an error. Release v1.3.3 failed that
+way two seconds after a deploy that was correct.
 
 `record` then mints an App token and `POST /repos/{repo}/merges` with
 `base=main`, `head=v$VERSION`, branching on the status code: 201 advanced, 204
