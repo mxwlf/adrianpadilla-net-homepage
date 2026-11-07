@@ -178,16 +178,24 @@ checkout the tag · setup-opentofu · azure/login (test identity, OIDC) · write
 `infra/test/backend.config` and `terraform.tfvars` from repository variables ·
 **`make test-env-restore`** → `scripts/test-env.sh restore`:
 
-`tofu init` · read `default_host_name` and `custom_domain` from state · if the
-app is up and the CNAME already matches, one reconciling `tofu apply` and stop ·
-otherwise `tofu apply -target=azurerm_static_web_app.test` · `az network dns
-record-set cname set-record` pointing `test.adrianpadilla.net` at the new
-`*.azurestaticapps.net` hostname · poll the authoritative record until it reads
-back · `tofu apply` (binds the custom domain) · poll
+`tofu init` · read `default_host_name` from state and the binding's state from
+`az staticwebapp hostname show` · if the app is up, the CNAME matches and the
+binding reads `Ready`, one reconciling `tofu apply` and stop · otherwise
+`tofu apply` · `az network dns record-set cname set-record` pointing
+`test.adrianpadilla.net` at the new `*.azurestaticapps.net` hostname · poll the
+authoritative record until it reads back · `az staticwebapp hostname set
+--validation-method cname-delegation --no-wait` · poll
 `az staticwebapp hostname show` until the certificate reports `Ready`
 
+The binding is made with `az` rather than by OpenTofu because the provider polls
+a subscription-level operation status after creating one, and the test identity
+stops at its resource group. `--no-wait` issues the same PUT without the poll.
+That is also why the restore is one apply: with the binding out of the
+configuration there is a single resource left, so the ordering lives in the
+script instead of in `-target`. See `docs/deployment.md`.
+
 It shares `concurrency: test-env` with `test-env.yml` so a dispatched teardown
-cannot land between the two applies.
+cannot land in the middle of that sequence.
 
 ### `deploy-test` — release.yml
 

@@ -162,18 +162,74 @@ no separate step to remember and no state to get wrong: the target is idempotent
 so on a release where the environment was already up it costs one no-op apply
 and one DNS read.
 
-A restore is two applies, for the same reason the first-ever apply was:
-`azurerm_static_web_app_custom_domain` validates by `cname-delegation`, so the
-CNAME has to resolve to the app's Azure hostname before the binding can be
-created — and that hostname is not known until the app exists. It then waits for
-Azure to report the binding `Ready`, which is when the certificate has been
-issued; without that wait the smoke test in `deploy-test` would hit a cold
-hostname and fail the TLS handshake, which looks nothing like the cold
-certificate it actually is.
+A restore is one apply, then DNS, then the custom-domain binding:
 
-Both workflows share a `test-env` concurrency group. A teardown landing between
-a restore's two applies would leave the record pointing at an app that no longer
+1. `tofu apply` creates the Static Web App.
+2. The CNAME is pointed at the app's new `*.azurestaticapps.net` hostname, and
+   the authoritative record is polled until it reads back.
+3. `az staticwebapp hostname set --hostname test.adrianpadilla.net
+--validation-method cname-delegation --no-wait` binds the hostname.
+4. `az staticwebapp hostname show` is polled until the binding reports `Ready`,
+   which is when the certificate has been issued. Without that wait the smoke
+   test in `deploy-test` would hit a cold hostname and fail the TLS handshake,
+   which looks nothing like the cold certificate it actually is.
+
+The order is forced by `cname-delegation`: the record has to resolve to the app
+before the binding can validate, and the hostname does not exist until the app
+does.
+
+Both workflows share a `test-env` concurrency group. A teardown landing in the
+middle of that sequence would leave the record pointing at an app that no longer
 exists.
+
+#### Why the binding is made with `az` and not by OpenTofu
+
+This was an `azurerm_static_web_app_custom_domain` resource, and a restore was
+two targeted applies because of it. Release **v1.3.2** is where that stopped
+working. It was the first restore after a real teardown, so the first time CI
+had to create the binding rather than find it already there, and it failed:
+
+```
+Error: creating Custom Domain (... Custom Domain Name: "test.adrianpadilla.net"):
+polling after CreateOrUpdateStaticSiteCustomDomain: unexpected status 403
+(403 Forbidden) with error: AuthorizationFailed: The client '...' with object id
+'...' does not have authorization to perform action
+'Microsoft.Web/locations/staticSitesOperationStatuses/read' over scope
+'/subscriptions/<sub>/providers/Microsoft.Web/locations/westus2/staticSitesOperationStatuses/<guid>'
+```
+
+The PUT succeeds. What fails is the poll that follows it, against a
+**subscription-level** path. The test identity holds `Contributor` on one
+resource group and `DNS Zone Contributor` on one record set, so a path outside
+that group cannot be authorized by either, whatever role is named.
+
+That left two options, and the choice is worth recording because it looks like a
+coin flip and is not:
+
+- **Widen the identity.** A custom role at subscription scope carrying just
+  `Microsoft.Web/locations/staticSitesOperationStatuses/read` would be a
+  harmless read. It would also be the first subscription-scoped assignment this
+  design has, and the property worth keeping is that the deploy identity's
+  authority stops at one resource group plus one DNS record set. Rejected.
+- **Move the binding out of OpenTofu.** `az staticwebapp hostname set
+--no-wait` issues the same PUT and declines to follow the poll;
+  `az staticwebapp hostname show` then reports readiness from a path inside the
+  resource group. Same validation method, same end state, no new permission.
+  Taken.
+
+What it costs: `infra/test/` no longer describes the binding, so `tofu plan`
+will not notice if it disappears, and `infra/prod/` still manages its `www`
+binding as a resource. That asymmetry is about who applies — prod is only ever
+applied by a human with broader rights, while CI applies test on every release.
+
+`tofu destroy` still removes the binding, because deleting a Static Web App
+takes its custom domains with it. The dispatched teardown immediately before
+v1.3.2 did exactly that under this identity and succeeded, which is also the
+evidence that DELETE does not poll the path CREATE does.
+
+`make test-env-status` now reports the binding's real state by asking Azure, so
+"app up, DNS correct, hostname never bound" — the state v1.3.2 left behind — is
+visible instead of being reported as healthy.
 
 ### Why DNS is automated now, and why that is still narrow
 

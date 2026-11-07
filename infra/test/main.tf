@@ -60,22 +60,48 @@ resource "azurerm_static_web_app" "test" {
   tags = var.tags
 }
 
-# `cname-delegation` is the validation the provider actually polls, which is why
-# the hostname has to stay a subdomain. The CNAME it validates against is the
-# hand-made record described above; it must already resolve to
-# azurerm_static_web_app.test.default_host_name before this can succeed.
+# NO CUSTOM DOMAIN BINDING HERE, AND THIS ONE IS NOT A PREFERENCE
+# ---------------------------------------------------------------
+# There used to be an `azurerm_static_web_app_custom_domain` resource here. It
+# cannot be created by the deploy identity, and the reason is a scope rather
+# than a role: after the PUT, the provider polls
 #
-# On a first apply the Static Web App does not exist yet, so its default
-# hostname is not known and the CNAME cannot have been created. Apply in two
-# steps the first time -- `make tf-apply` prints the record to create when it
-# reaches this point. Later applies are a single pass.
-resource "azurerm_static_web_app_custom_domain" "test" {
-  static_web_app_id = azurerm_static_web_app.test.id
-  domain_name       = var.custom_domain
-  validation_type   = "cname-delegation"
-
-  timeouts {
-    create = "30m"
-    delete = "30m"
-  }
-}
+#   /subscriptions/<sub>/providers/Microsoft.Web/locations/<region>
+#     /staticSitesOperationStatuses/<guid>
+#
+# which is a SUBSCRIPTION-level path. The identity holds `Contributor` on this
+# resource group and nothing wider, so the poll comes back
+# `403 AuthorizationFailed: ... does not have authorization to perform action
+# 'Microsoft.Web/locations/staticSitesOperationStatuses/read'`. Release v1.3.2
+# is where that surfaced: it was the first restore after a real teardown, so it
+# was the first time CI had to create the binding rather than find it already
+# there.
+#
+# The fix was a choice between widening the identity to subscription scope and
+# moving the binding out of this configuration. Widening lost: the whole design
+# of this environment is that the deploy identity's authority stops at this
+# resource group plus one DNS record set, and a subscription-scoped assignment
+# would be the first exception to that.
+#
+# scripts/test-env.sh now binds it with `az staticwebapp hostname set
+# --no-wait`, which issues the same PUT and declines to poll, then waits on
+# `az staticwebapp hostname show` instead -- a GET on
+# .../resourceGroups/<rg>/providers/Microsoft.Web/staticSites/<app>, which is
+# inside the grant. Same validation (`cname-delegation`), same end state, no new
+# permission.
+#
+# WHAT THIS COSTS, STATED PLAINLY: this configuration no longer describes the
+# binding, so `tofu plan` will not notice if it goes missing, and infra/prod/
+# still manages its `www` binding as a resource. The asymmetry is about who
+# applies, not about what the environments are: only a human with broader rights
+# ever applies prod, while CI applies test on every release. `tofu destroy`
+# still removes the binding, because deleting the Static Web App takes its
+# custom domains with it -- the dispatched teardown that preceded v1.3.2 did
+# exactly that under this identity and succeeded, which is also the evidence
+# that DELETE does not poll the path CREATE does.
+#
+# `cname-delegation` still requires the hostname to be a subdomain, and the
+# CNAME must already resolve to azurerm_static_web_app.test.default_host_name
+# before the binding can validate. That ordering now lives entirely in
+# scripts/test-env.sh, which is also why restore is a single `tofu apply` again
+# rather than the two targeted passes it used to need.
