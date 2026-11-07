@@ -70,6 +70,7 @@ is missing and how to get it.
 | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | [`docs/getting-started.md`](docs/getting-started.md)                   | Building the site: templates, pages, assets, the local commands                         |
 | [`docs/deployment.md`](docs/deployment.md)                             | How a change reaches production — branches, releases, the approval gate, one-time setup |
+| [`docs/pipeline-map.md`](docs/pipeline-map.md)                         | Every automated action, what triggers it, and which checks run more than once           |
 | [`docs/hosting-setup.md`](docs/hosting-setup.md)                       | Response headers, and how the per-environment variants are built                        |
 | [`docs/hardening-github-actions.md`](docs/hardening-github-actions.md) | The Actions supply-chain work, and how to apply it to another repository                |
 | [`.github/rulesets/README.md`](.github/rulesets/README.md)             | Branch protection as code, and the protections that live on the repo instead            |
