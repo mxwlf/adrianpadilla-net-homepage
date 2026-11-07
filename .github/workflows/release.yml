@@ -310,19 +310,53 @@ jobs:
       - name: Smoke-test the deployed site
         env:
           HOSTNAME_UNDER_TEST: ${{ vars.TEST_HOSTNAME }}
+          # How long the host configuration is allowed to take to reach the
+          # edge. Generous on purpose: overshooting costs a slow job, while
+          # undershooting fails a release that deployed correctly.
+          CONFIG_WAIT_SECONDS: "180"
         run: |
           url="https://${HOSTNAME_UNDER_TEST}/"
           echo "GET $url"
-          headers=$(curl -fsS --retry 6 --retry-delay 10 --retry-all-errors -D - -o /dev/null "$url")
-          echo "$headers"
 
-          # The one header that must differ from production. Without it the
-          # staging host is indexable, and it serves production's canonical
-          # URLs, which is exactly the duplicate-content case to avoid.
-          echo "$headers" | grep -qi '^x-robots-tag:.*noindex' || {
-            echo "::error::X-Robots-Tag: noindex missing — the test host-config was not applied"
-            exit 1
-          }
+          # POLLED ON THE ASSERTION, NOT RETRIED ON THE REQUEST, and the
+          # difference is the whole reason this loop exists.
+          #
+          # `swa deploy` returns once the upload is accepted. The content and
+          # staticwebapp.config.json then reach the edge independently, so a
+          # request that lands in between gets HTTP 200, serving the new content
+          # with none of the configured headers. `curl --retry-all-errors` does
+          # not help with that: a 200 is not an error, so the retry budget is
+          # never spent and the first response is the one asserted on.
+          #
+          # v1.3.3 failed exactly that way, two seconds after the deploy. The
+          # response had `content-type` and `date` and nothing else -- no
+          # cache-control, no etag, no CSP, no X-Robots-Tag. The same URL served
+          # the full header set minutes later, so the site had been correct the
+          # whole time and the check was wrong.
+          #
+          # A failed request leaves `headers` empty and takes the same path, so
+          # this also covers a cold TLS handshake on a freshly bound hostname.
+          deadline=$(( SECONDS + CONFIG_WAIT_SECONDS ))
+          while :; do
+            headers=$(curl -fsS -D - -o /dev/null "$url") || headers=''
+
+            # The one header that must differ from production. Without it the
+            # staging host is indexable, and it serves production's canonical
+            # URLs, which is exactly the duplicate-content case to avoid.
+            if printf '%s' "$headers" | grep -qi '^x-robots-tag:.*noindex'; then
+              echo "$headers"
+              break
+            fi
+
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "$headers"
+              echo "::error::X-Robots-Tag: noindex still absent after ${CONFIG_WAIT_SECONDS}s — the test host-config was not applied"
+              exit 1
+            fi
+
+            echo "host-config not live yet after ${SECONDS}s, waiting"
+            sleep 10
+          done
 
           # Canonical still points at production, because the bytes are
           # production's. Proves site/ was not rewritten per environment.
