@@ -319,6 +319,17 @@ Found while tracing the above and deliberately left alone, each with the reason.
   `needs: ci`, which puts a required check behind the slowest job and delays the
   signal by minutes to save about one minute of CPU. The duplicate build buys
   parallelism. Leave it until the build is slow enough for the trade to flip.
+- **Lighthouse has no backstop between the pull-request gate and production.**
+  The budgets are a required check on every pull request, and after that nothing
+  re-asserts them: the push trigger is gone, and `report:lighthouse` collects
+  without asserting. Both of those are deliberate and both were decided at once,
+  which is the part worth knowing. A regression that got past the gate takes an
+  admin bypass to happen at all, and then surfaces in `monitor.yml` against the
+  live site up to a week later. Everything else has a second look while
+  packaging: `make package` re-runs build, html-validate, e2e and axe, so a
+  broken build cannot be packaged. Lighthouse is the one check that does not.
+  Asserting the budgets in `deploy-test` against `test.adrianpadilla.net` would
+  close it, and would measure a real deployment instead of a runner.
 - **`ensure-test` waits for `package`** although it needs nothing from it. The
   sequencing is deliberate — do not rebuild an environment for a release that
   cannot be packaged — but it does serialise a DNS and certificate wait behind
