@@ -4,6 +4,14 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.3.2](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.3.1...v1.3.2) (2026-11-07)
+
+
+### Build and CI
+
+* stop re-running the gate on trees it has already cleared ([609a07c](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/609a07c5f11a6485b4f0836f7840816d2ccb79f3))
+* stop re-running the gate on trees it has already cleared ([119978f](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/119978f363f1f968e2e43f5b85f70d651053102a))
+
 ## [1.3.1](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.3.0...v1.3.1) (2026-11-06)
 
 
