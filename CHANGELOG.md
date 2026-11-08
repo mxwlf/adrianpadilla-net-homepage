@@ -4,6 +4,19 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.4.0](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.3.5...v1.4.0) (2026-11-08)
+
+
+### Features
+
+* **ci:** let the production monitor be run on demand ([b6bf7e3](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/b6bf7e34a761dac610403563b9f4a4d0ae76625b))
+
+
+### Fixes
+
+* **ci:** audit production instead of a port nothing listens on ([1922fb1](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/1922fb11096ce7e8c0be461d39f25e85182f483a))
+* **ci:** audit production instead of a port nothing listens on ([79cd0c4](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/79cd0c46f812a88490aecd9f933416689f0f34ce))
+
 ## [1.3.5](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.3.4...v1.3.5) (2026-11-08)
 
 
