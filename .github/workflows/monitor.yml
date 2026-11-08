@@ -2,6 +2,12 @@ name: Production monitoring
 on:
   schedule:
     - cron: "0 6 * * 1" # weekly on Monday at 06:00 UTC
+  # On demand as well, because a weekly schedule was the only way to run this
+  # job and so a broken monitor took fourteen runs to be looked at. Dispatching
+  # it is how you confirm a change to it worked, rather than waiting until
+  # Monday to find out. GitHub only offers the trigger for the copy of this file
+  # on the default branch, so it does nothing on a feature branch.
+  workflow_dispatch:
 
 permissions:
   contents: read
