@@ -24,6 +24,7 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'lycheeverse/lychee-action@v2.9.0'
     '.github/workflows/monitor.yml':
+        - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v7.1.0'
         - 'actions/upload-artifact@v7.0.2'
     '.github/workflows/promote-prod.yml':
