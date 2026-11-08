@@ -2,6 +2,12 @@ name: Production monitoring
 on:
   schedule:
     - cron: "0 6 * * 1" # weekly on Monday at 06:00 UTC
+  # On demand as well, because a weekly schedule was the only way to run this
+  # job and so a broken monitor took fourteen runs to be looked at. Dispatching
+  # it is how you confirm a change to it worked, rather than waiting until
+  # Monday to find out. GitHub only offers the trigger for the copy of this file
+  # on the default branch, so it does nothing on a feature branch.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -27,6 +33,14 @@ jobs:
           }
           echo "monitoring $PROD_URL"
 
+      # Restored after a bad merge. fed4cfe resolved a conflict between "pin
+      # every action to a SHA" and "bump setup-node to v7" by keeping one side's
+      # step and the other side's version, and dropped this line in the
+      # process. Everything below needs the repository: .nvmrc for the node
+      # version, package-lock.json for `npm ci`, and lighthouserc.prod.cjs for
+      # the audit itself.
+      - uses: actions/checkout@v7.0.1
+
       - uses: actions/setup-node@v7.1.0
         with:
           node-version-file: .nvmrc
@@ -34,11 +48,13 @@ jobs:
 
       - run: npm ci
 
+      # --config is load-bearing: the default lighthouserc.json sets
+      # `staticDistDir`, under which lhci serves ./dist and rewrites the port of
+      # any --collect.url onto its own server, so this job audited
+      # https://<host>:<randomport>/ and failed with NO_FCP every week. The URL
+      # and the run count live in lighthouserc.prod.cjs; see the note there.
       - name: Run Lighthouse CI against production
-        run: |
-          npx @lhci/cli autorun \
-            --collect.url="$PROD_URL" \
-            --collect.numberOfRuns=3
+        run: npx @lhci/cli autorun --config=lighthouserc.prod.cjs
 
       - name: Upload Lighthouse reports
         uses: actions/upload-artifact@v7.0.2
