@@ -240,13 +240,27 @@ policy blocks the calling workflow.
 
 ## What is portable between repositories
 
-These files only reference ids that mean the same thing everywhere:
+Most ids in these files mean the same thing everywhere:
 
 - **`integration_id: 15368`** in `required_status_checks` is the GitHub Actions
   app — a global app id, identical in every repository. All five required checks
   are GitHub Actions jobs, so they all use it.
 - **`actor_type: "RepositoryRole"`, `actor_id: 5`** is the repository admin
   role. Role ids are global too.
+
+**One id is not portable, and is committed anyway:**
+`actor_type: "Integration"`, `actor_id: 5622267` in `main-protection` is the
+release App whose token the `record` job in `promote-prod.yml` uses to advance
+`main`. App ids are global, so the value is stable — but that App is installed
+on this account only, so a repository created from this template must replace it
+with its own, or drop the entry along with the `record` job.
+
+It is committed because the alternative is worse. `main` accepts only reviewed
+pull requests, so the promotion cannot advance it without this bypass; leaving
+the entry out meant `make rulesets-diff` reported drift permanently, and the
+next `make rulesets-apply` would have deleted the live bypass and broken the
+following promotion with the 403 that `promote-prod.yml` warns about. A
+not-portable id that is written down beats one that only exists on GitHub.
 
 Do **not** commit rulesets that reference `actor_type: "Team"` or specific
 users: those ids are scoped to one organization or account and will resolve to
