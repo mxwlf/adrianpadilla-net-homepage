@@ -269,55 +269,104 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       # main is the record of what is live, so it moves only after a successful
-      # promotion.
+      # promotion -- and it moves as a POINTER, never as a merge.
       #
-      # This needs the app listed in main-protection.json's bypass_actors with
-      # bypass_mode "always": main otherwise accepts only reviewed pull
-      # requests, and that is deliberate. See .github/rulesets/README.md.
+      # This used to call POST /repos/{repo}/merges, which created a
+      # `chore: record vX in production` merge commit on main. Those commits
+      # authored nothing -- every one had a tree identical to the tag it
+      # recorded -- but they existed only on main, and nothing ever merged main
+      # back into develop. So main diverged by one content-free commit per
+      # promotion, permanently and cumulatively, and `git log develop..main`
+      # always showed four commits of "work" that were not work. Fast-forwarding
+      # the ref instead leaves main pointing AT the released commit rather than
+      # at a merge above it, so the divergence cannot accumulate: main is always
+      # an ancestor of develop, or equal to it.
       #
-      # Note what the bypass means for signatures, because it is easy to get
-      # wrong: GitHub does sign the merge commit it creates here, but
-      # required_signatures checks every commit a push introduces, and this
-      # merge brings release-please's unsigned commits onto main as ancestors.
-      # It succeeds because the bypass skips required_signatures along with the
-      # rest of the ruleset -- not because everything it carries is signed. So
-      # main is not "fully signed" once this job is installed; what stays true
-      # is that no HUMAN can reach main except through a reviewed pull request
-      # whose commits are signed. If you want the stronger property, drop this
-      # job: the release tag and the Deployment record already state what is
-      # live. docs/deployment.md covers that trade.
+      # `force: false` is load-bearing, not a default worth omitting. GitHub
+      # rejects any update that is not a fast-forward, which makes "never
+      # rewrite a long-lived branch" a rule the API enforces instead of one this
+      # script has to remember -- and it is what turns a rollback into a visible
+      # no-op rather than a silent rewrite. See the 422 branch below.
+      #
+      # This still needs the app listed in main-protection.json's bypass_actors
+      # with bypass_mode "always". main accepts only reviewed pull requests, and
+      # a ref update is not a pull request, so the pull_request rule blocks it
+      # however the commit was made. See .github/rulesets/README.md.
+      #
+      # Be precise about signatures, because the comment here was wrong the
+      # moment the merge went away: there is no longer a GitHub-signed merge
+      # commit to point at. main now points straight at a develop commit, and
+      # develop does not require signatures, so the ancestors still include
+      # release-please's unsigned commits and required_signatures is still
+      # skipped by the bypass. What stays true is the part worth having: no
+      # HUMAN reaches main except through a reviewed pull request whose own
+      # commits are signed. Dropping this job restores the stronger property;
+      # docs/deployment.md covers that trade.
       - name: Advance main to the promoted commit
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ inputs.version }}
         run: |
-          # Distinguished by status code, not by the body. A no-op merge returns
-          # 204 with an EMPTY body, so matching on text like "Already merged"
-          # can never fire -- and 204 is a success, so the happy-path branch
-          # would have claimed main advanced when nothing happened. Promoting an
-          # older version for a rollback takes that path every time, since its
-          # tag is already an ancestor of main.
-          code=$(gh api --method POST "repos/${GH_REPO}/merges" \
-            -f base=main \
-            -f head="v${VERSION}" \
-            -f commit_message="chore: record v${VERSION} in production" \
-            --include --silent 2>/dev/null |
-            sed -n '1s#.* \([0-9][0-9][0-9]\).*#\1#p') || true
+          # Resolved through /commits/ rather than /git/ref/tags/, which hands
+          # back the tag object's own sha for an annotated tag -- and would point
+          # main at something that is not a commit.
+          sha=$(gh api "repos/${GH_REPO}/commits/v${VERSION}" --jq '.sha')
+          printf '%s' "$sha" | grep -qE '^[0-9a-f]{40}$' || {
+            echo "::error::could not resolve v${VERSION} to a commit sha"
+            exit 1
+          }
+
+          # Streams kept apart on purpose. --include puts the status line at the
+          # top of stdout, and the 422 below has to be told apart from other
+          # validation failures by its message, so the body is kept rather than
+          # silenced. Merging stderr into the same file would let gh's own error
+          # line land first and break the status-line match.
+          gh api --method PATCH "repos/${GH_REPO}/git/refs/heads/main" \
+            -f sha="$sha" -F force=false \
+            --include > "$RUNNER_TEMP/ref-update" 2> "$RUNNER_TEMP/ref-error" || true
+          code=$(sed -n '1s#.* \([0-9][0-9][0-9]\).*#\1#p' "$RUNNER_TEMP/ref-update")
 
           case "$code" in
-            201)
-              echo "main advanced to v${VERSION}"
+            200)
+              echo "main advanced to v${VERSION} (${sha})"
+              echo "main -> v${VERSION} (\`${sha}\`)" >> "$GITHUB_STEP_SUMMARY"
               ;;
-            204)
-              echo "main already contains v${VERSION} — nothing to record"
+            422)
+              if grep -qi 'not a fast forward' \
+                "$RUNNER_TEMP/ref-update" "$RUNNER_TEMP/ref-error"; then
+                # The rollback path, and deliberately NOT a failure. Promoting an
+                # earlier version is a supported operation -- it is how rollback
+                # works here -- and main only moves forward, so there is nothing
+                # for this job to do. Saying so loudly beats both alternatives:
+                # failing would cry wolf on every intentional rollback, and
+                # staying quiet would leave main looking like it agreed with
+                # production when it does not.
+                echo "::warning::main was NOT advanced: v${VERSION} is not a fast-forward from main."
+                echo "v${VERSION} is live, but main still points at a later release."
+                {
+                  echo "### main not advanced"
+                  echo
+                  echo "Promoted **v${VERSION}** (\`${sha}\`), which is behind main."
+                  echo "This is the expected outcome of a rollback."
+                  echo
+                  echo "**main is not the record of what is live right now.** The Deployment"
+                  echo 'record and `gh release list` are. main will catch up on the next'
+                  echo "promotion of a version newer than it."
+                } >> "$GITHUB_STEP_SUMMARY"
+              else
+                cat "$RUNNER_TEMP/ref-update" "$RUNNER_TEMP/ref-error"
+                echo "::error::main refused the update (422), and not because of a fast-forward."
+                exit 1
+              fi
               ;;
             403)
-              echo "::error::main refused the merge (403). The release App is not a bypass actor on main-protection."
+              echo "::error::main refused the update (403). The release App is not a bypass actor on main-protection."
               echo 'Add it with bypass_mode "always", then run `make rulesets-export`. See docs/deployment.md.'
               exit 1
               ;;
             *)
+              cat "$RUNNER_TEMP/ref-update" "$RUNNER_TEMP/ref-error"
               echo "::error::could not advance main (HTTP ${code:-unknown})."
               exit 1
               ;;

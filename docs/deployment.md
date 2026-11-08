@@ -52,14 +52,33 @@ container rebuilt the site server-side, and what shipped had never been through
 
 ## The branches
 
-| Branch    | Role                                                             |
-| --------- | ---------------------------------------------------------------- |
-| `develop` | Integration. Pull requests land here. Default branch.            |
-| `main`    | The record of what is in production. Advanced after a promotion. |
+| Branch    | Role                                                                         |
+| --------- | ---------------------------------------------------------------------------- |
+| `develop` | Integration. Pull requests land here. Default branch.                        |
+| `main`    | The record of what is in production. Fast-forwarded to the promoted release. |
 
-Both are protected and accept only merge commits. `develop` does not require
-signed commits, because release-please's automated commits are unsigned; `main`
-does. See [`.github/rulesets/README.md`](../.github/rulesets/README.md).
+Both are protected. Human changes reach either one only through a merge-commit
+pull request. `develop` does not require signed commits, because
+release-please's automated commits are unsigned; `main` does. See
+[`.github/rulesets/README.md`](../.github/rulesets/README.md).
+
+**`main` has no commits of its own, and that is a property worth keeping.** It
+is a pointer at a commit that is already on `develop` — the one a release was
+tagged from — so `git log develop..main` is empty and `main` can never appear
+"ahead". The `record` job in `promote-prod.yml` moves it with a non-forced ref
+update, so GitHub itself rejects anything that is not a fast-forward.
+
+It did not always work this way. Until v1.3.4 the job merged the release tag
+into `main`, which left one content-free `chore: record vX in production` merge
+commit behind per promotion — each with a tree identical to the tag it recorded,
+each reachable only from `main`, and never merged back. `main` drifted further
+from `develop` with every release while containing exactly the same files. The
+four that accumulated were reset away once, in a single operation that changed
+no content, and the mechanism was changed so they cannot come back.
+
+Neither branch is ever rewritten. Both carry `non_fast_forward`, and the admin
+bypass is `bypass_mode: "pull_request"`, which does not apply to a force-push —
+so the rule holds against you as well as against automation.
 
 ## Cutting a release
 
@@ -105,6 +124,14 @@ released.** That is the point of the split, and it buys two things:
 - **Rollback is a promotion of an earlier version**, not a revert commit and a
   rebuild. `make package` is never re-run, so an older promotion ships exactly
   the bytes that were verified when it was built.
+
+**A rollback does not move `main` backward, and the `record` job says so out
+loud.** `main` only fast-forwards, so promoting a version behind it gets a `422`
+from the ref update; the job treats that as success and writes a warning plus a
+step summary explaining that `main` is no longer the record of what is live.
+Failing instead would cry wolf on every intentional rollback. During a rollback,
+the Deployment record and `gh release list` are the truth, and `main` catches up
+at the next promotion of a version newer than it.
 
 ```sh
 gh release list                          # what is promotable
