@@ -19,6 +19,26 @@
 - Work lands on **`develop`** by pull request. `main` is the record of what is in
   production. Both are protected; never push to either directly, and never use
   `--no-verify`.
+- **Never rewrite history on a long-lived branch or a published tag.** `main` and
+  `develop` are long-lived: no rebase, no amend, no force-push, no reset that
+  moves either backward. Feature branches are not long-lived — rebase and squash
+  them freely _before_ they land. Published tags never move or get deleted: the
+  release artifact's provenance attestation and digests are what prove a running
+  site came from this repo, and a moved tag is the one thing that breaks the
+  trail from a deployed version back to its source. The rule is enforced, not
+  just documented: both rulesets carry `non_fast_forward`, and the admin bypass
+  is `bypass_mode: "pull_request"`, which does not apply to a force-push. So the
+  only actor that _could_ rewrite either branch is the release App — which is why
+  `promote-prod.yml` advances `main` with `force: false`.
+  - One closed exception, 2026-11-07: `main` was reset from `5f0d9b6` to
+    `91d4ca9` (`v1.3.4`) to discard four `chore: record vX in production` merge
+    commits. They were reachable only from `main` and each had a tree identical
+    to the tag it recorded, so the operation changed no content and orphaned
+    nothing else — `git rev-list --count develop..main` was exactly 4, and
+    `main`'s pre-`develop` history was already contained in `develop`. It was
+    done to put `main` into the fast-forward-only state this rule can actually
+    hold. Do not treat it as precedent; the mechanism that made those commits is
+    gone.
 
 ## Architecture
 

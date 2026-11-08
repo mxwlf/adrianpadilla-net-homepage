@@ -108,15 +108,18 @@ Two rules on `main` are deliberately absent from `develop`.
   commits. Its commits are therefore unsigned, and its `--signoff` option adds a
   `Signed-off-by` trailer, which is a DCO attestation and not a signature. With
   `required_signatures` on `develop`, every release pull request would be
-  unmergeable. `main` keeps the rule, and `main` only ever receives merges
-  created by GitHub.
+  unmergeable. `main` keeps the rule, and every human change that reaches
+  `main` is a GitHub-created merge commit.
 
   Be precise about what `main` keeping the rule actually buys, because the
   promotion workflow's bypass actor erodes part of it. `required_signatures`
-  checks every commit a push introduces, not just the tip, so when the `record`
-  job merges a release tag into `main` it carries release-please's unsigned
-  commits along as ancestors — and that merge only succeeds because
-  `bypass_mode: "always"` skips this rule with the rest of the ruleset. What
+  checks every commit a push introduces, not just the tip. The `record` job in
+  `promote-prod.yml` fast-forwards `main` onto a commit that is already on
+  `develop`, which carries release-please's unsigned commits as ancestors — and
+  it only succeeds because `bypass_mode: "always"` skips this rule along with
+  the rest of the ruleset. Note there is no GitHub-signed merge commit involved
+  to soften that: since v1.3.4 the job moves a ref rather than creating a merge,
+  so the tip `main` lands on is whatever `develop` had, signed or not. What
   remains true, and is the thing worth having, is that **no human reaches
   `main` except through a reviewed pull request whose own commits are signed.**
   Dropping the `record` job restores the stronger property; see
