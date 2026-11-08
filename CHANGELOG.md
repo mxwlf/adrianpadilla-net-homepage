@@ -4,6 +4,14 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.3.4](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.3.3...v1.3.4) (2026-11-07)
+
+
+### Fixes
+
+* **ci:** wait for the host config to go live before asserting on it ([720c364](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/720c3647511f883a57c0e7b0b3e7b1c7523e2d1e))
+* **ci:** wait for the host config to go live before asserting on it ([702d453](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/702d453d77b1e975e476403f36b204b9f7c92e62))
+
 ## [1.3.3](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.3.2...v1.3.3) (2026-11-07)
 
 
