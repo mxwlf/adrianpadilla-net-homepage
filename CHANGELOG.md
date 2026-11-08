@@ -4,6 +4,16 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.3.5](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.3.4...v1.3.5) (2026-11-08)
+
+
+### Fixes
+
+* **ci:** fast-forward main instead of merging into it ([48d2011](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/48d20118064b3a964d82ca5f7014a3adccb16fd0))
+* **ci:** fast-forward main instead of merging into it ([baaa251](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/baaa251681fddba794f5c8f4ad5b39c5e363a1ac))
+* **rulesets:** commit the release App's bypass on main ([67e8683](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/67e8683a20656323b21d5c48a9689140275e1050))
+* **rulesets:** commit the release App's bypass on main ([b413f8d](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/b413f8d2caacae93bfeefceb80345ab6fc2b4573))
+
 ## [1.3.4](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.3.3...v1.3.4) (2026-11-07)
 
 
