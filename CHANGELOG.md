@@ -4,6 +4,13 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.4.2](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.4.1...v1.4.2) (2026-11-09)
+
+
+### Fixes
+
+* **ci:** make the production header check able to fail ([69f8aad](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/69f8aad98178855e11b1f09ab214ebcfee547a33))
+
 ## [1.4.1](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.4.0...v1.4.1) (2026-11-09)
 
 
