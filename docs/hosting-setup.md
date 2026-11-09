@@ -89,10 +89,11 @@ framing protection does not depend on one string staying correct.
 The CSP is a single hand-maintained line. If an edit drops `frame-ancestors`
 from it, the `Content-Security-Policy` header still exists, a presence check
 still passes, and nothing reports that the site became framable. That is not
-hypothetical: the same line is already missing the `base-uri 'self'` that
-`.claude/rules/security.md` tells us to default to, and it went missing without
-being recorded anywhere. `X-Frame-Options` is a separate header with an
-independent failure mode, which is the whole value of it.
+hypothetical: the same line had lost the `base-uri 'self'` that
+`.claude/rules/security.md` tells us to default to, and nothing recorded the
+loss or noticed it for as long as it stood. It was restored on 2026-11-09, in
+the change immediately after this one. `X-Frame-Options` is a separate header
+with an independent failure mode, which is the whole value of it.
 
 So: do not remove it as redundant. Redundant is the point.
 
