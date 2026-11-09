@@ -65,32 +65,137 @@ jobs:
   security-headers:
     runs-on: ubuntu-latest
     steps:
+      # This job used to set FAILED=1 and then emit `::warning::`, so it could
+      # not fail the run. A CSP that vanished from production produced a green
+      # tick and a yellow badge you had to open the log to read, which is the
+      # same signal the fourteen red runs above were drowned in.
+      #
+      # Two things had to change together before it could gate. `X-Frame-Options`
+      # was absent on purpose, so flipping the warning to an error would have
+      # made the job permanently red for a documented reason; it is now served
+      # (see .claude/rules/security.md). And the checks matched header NAMES, so
+      # they passed on any value at all.
+      #
+      # Known gaps are a `::notice::`, not a failure. A monitor that is red for
+      # a reason nobody intends to fix this week teaches you to ignore it.
       - name: Check security headers
         run: |
+          set -euo pipefail
+
           test -n "$PROD_URL" || {
             echo "::error::vars.PROD_URL is not set"
             exit 1
           }
+
           echo "Checking security headers for $PROD_URL"
-          HEADERS=$(curl -sI "$PROD_URL")
-          echo "$HEADERS"
+
+          # Reachability and status are settled before a single header is
+          # judged. Now that this job can fail the run, an unreachable host must
+          # report as an unreachable host: "six security headers are missing"
+          # would send the next person looking for the wrong incident. A non-200
+          # also means the headers may have come from an error path, where the
+          # host config does not necessarily apply.
+          HEADER_FILE="$(mktemp)"
+          if ! STATUS="$(curl -sS --retry 3 --retry-all-errors --max-time 20 \
+            -I -o "$HEADER_FILE" -w '%{http_code}' "$PROD_URL")"; then
+            echo "::error::could not reach $PROD_URL — no headers were checked"
+            exit 1
+          fi
+
+          HEADERS="$(tr -d '\r' < "$HEADER_FILE")"
+          printf '%s\n' "$HEADERS"
+
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::$PROD_URL returned HTTP $STATUS — headers not asserted"
+            exit 1
+          fi
 
           FAILED=0
 
-          check_header() {
-            if echo "$HEADERS" | grep -qi "$1"; then
-              echo "[PASS] $1"
-            else
-              echo "[FAIL] $1 not found"
-              FAILED=1
-            fi
+          # Last occurrence wins, which is also what a browser does for these.
+          value_of() {
+            printf '%s\n' "$HEADERS" | sed -nE "s/^[[:space:]]*$1:[[:space:]]*(.*)/\1/Ip" | tail -n1
+            return 0
           }
 
-          check_header "X-Content-Type-Options"
-          check_header "X-Frame-Options"
-          check_header "Referrer-Policy"
-          check_header "Content-Security-Policy"
+          lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+          require_exact() {
+            local actual; actual="$(value_of "$1")"
+            if [ -z "$actual" ]; then
+              echo "[FAIL] $1 absent (want: $2)"; FAILED=1
+            elif [ "$(lower "$actual")" = "$(lower "$2")" ]; then
+              echo "[PASS] $1: $actual"
+            else
+              echo "[FAIL] $1: $actual (want: $2)"; FAILED=1
+            fi
+            return 0
+          }
+
+          require_present() {
+            local actual; actual="$(value_of "$1")"
+            if [ -n "$actual" ]; then
+              echo "[PASS] $1"
+            else
+              echo "[FAIL] $1 absent"; FAILED=1
+            fi
+            return 0
+          }
+
+          # Any of these keeps the full path off cross-origin requests, so all
+          # of them satisfy the intent of the rule. The rule names one in
+          # particular; falling short of that is a notice, not a failure.
+          require_referrer_policy() {
+            local actual; actual="$(lower "$(value_of Referrer-Policy)")"
+            case "$actual" in
+              no-referrer|same-origin|strict-origin|strict-origin-when-cross-origin)
+                echo "[PASS] Referrer-Policy: $actual"
+                if [ "$actual" != "strict-origin-when-cross-origin" ]; then
+                  echo "::notice::Referrer-Policy is '$actual', not the strict-origin-when-cross-origin the rule asks for (known gap)"
+                fi
+                ;;
+              "") echo "[FAIL] Referrer-Policy absent"; FAILED=1 ;;
+              *)  echo "[FAIL] Referrer-Policy: $actual leaks the full URL cross-origin"; FAILED=1 ;;
+            esac
+            return 0
+          }
+
+          # A ratchet, not a target. The floor is what production serves today,
+          # so the check catches a reduction without being red about a value we
+          # already know is low. Raise the floor in the same change that raises
+          # the header.
+          HSTS_FLOOR=300
+          HSTS_PRODUCTION_LIFETIME=31536000
+
+          require_hsts() {
+            local actual max_age
+            actual="$(value_of Strict-Transport-Security)"
+            if [ -z "$actual" ]; then
+              echo "[FAIL] Strict-Transport-Security absent"; FAILED=1; return 0
+            fi
+            max_age="$(printf '%s' "$actual" | sed -nE 's/.*[Mm]ax-[Aa]ge=([0-9]+).*/\1/p')"
+            if [ -z "$max_age" ]; then
+              echo "[FAIL] Strict-Transport-Security: $actual has no max-age"; FAILED=1; return 0
+            fi
+            if [ "$max_age" -lt "$HSTS_FLOOR" ]; then
+              echo "[FAIL] Strict-Transport-Security max-age=$max_age is below the floor of $HSTS_FLOOR"; FAILED=1; return 0
+            fi
+            echo "[PASS] Strict-Transport-Security: $actual"
+            if [ "$max_age" -lt "$HSTS_PRODUCTION_LIFETIME" ]; then
+              echo "::notice::Strict-Transport-Security max-age=$max_age is still the trial value, not a production lifetime (known gap)"
+            fi
+            return 0
+          }
+
+          require_exact X-Content-Type-Options nosniff
+          require_exact X-Frame-Options DENY
+          require_present Content-Security-Policy
+          require_present Permissions-Policy
+          require_referrer_policy
+          require_hsts
 
           if [ "$FAILED" -eq 1 ]; then
-            echo "::warning::Some security headers are missing"
+            echo "::error::production is missing or weakening a required security header"
+            exit 1
           fi
+          echo "All required security headers present with acceptable values."
