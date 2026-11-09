@@ -81,9 +81,21 @@ Two gaps remain, both narrower than they looked:
   Declaring it in `globalHeaders` overrides the default. Either change the
   header or change the rule — but they should agree.
 
-`X-Frame-Options` is absent and deliberately so: the CSP's
-`frame-ancestors 'none'` covers it in effect. `monitor.yml` still reports it as
-missing, which is noise worth fixing when that job is made able to fail.
+`X-Frame-Options: DENY` is declared in `globalHeaders` even though the CSP's
+`frame-ancestors 'none'` already covers framing, and a CSP-aware browser is
+required by spec to ignore it. It is not there for the browser; it is there so
+framing protection does not depend on one string staying correct.
+
+The CSP is a single hand-maintained line. If an edit drops `frame-ancestors`
+from it, the `Content-Security-Policy` header still exists, a presence check
+still passes, and nothing reports that the site became framable. That is not
+hypothetical: the same line had lost the `base-uri 'self'` that
+`.claude/rules/security.md` tells us to default to, and nothing recorded the
+loss or noticed it for as long as it stood. It was restored on 2026-11-09.
+`X-Frame-Options` is a separate header with an independent failure mode, which
+is the whole value of it.
+
+So: do not remove it as redundant. Redundant is the point.
 
 Each of these alters live response headers, so each belongs in its own change
 with its own verification.

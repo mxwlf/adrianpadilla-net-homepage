@@ -4,6 +4,18 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.4.1](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.4.0...v1.4.1) (2026-11-09)
+
+
+### Fixes
+
+* **ci:** upload the Lighthouse reports that were being filtered out ([37a688f](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/37a688f498a2a7c3deaf04d1bda4eb6ff0a9561f))
+* **ci:** upload the Lighthouse reports that were being filtered out ([a29d43f](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/a29d43f18bfc464ee138e2beecc9326fa4b01507))
+* **security:** restore base-uri 'self' to the CSP ([784ca97](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/784ca971fb44280680ff3c8387b6643ad69389c0))
+* **security:** restore base-uri 'self' to the CSP ([f441c1e](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/f441c1e9b83f93731e4bf094ea0b18d0044af811))
+* **security:** serve X-Frame-Options: DENY ([835e6bf](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/835e6bf7c24a4e6b210afcda204f03422328ff52))
+* **security:** serve X-Frame-Options: DENY ([0162f4b](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/0162f4bc04f8f212f228d52b003b69078fc25144))
+
 ## [1.4.0](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.3.5...v1.4.0) (2026-11-08)
 
 

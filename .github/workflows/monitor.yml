@@ -56,11 +56,24 @@ jobs:
       - name: Run Lighthouse CI against production
         run: npx @lhci/cli autorun --config=lighthouserc.prod.cjs
 
+      # `include-hidden-files` is what makes this step do anything at all.
+      # upload-artifact has excluded hidden paths by default since v4.4, and
+      # `.lighthouseci` is a dot-directory, so every report under it was
+      # filtered out before the glob resolved. Every run of this job since the
+      # step was added logged "No files were found with the provided path" and
+      # stored zero artifacts, while lighthouserc.prod.cjs deliberately drops
+      # its `upload` block on the stated grounds that "the reports leave this
+      # job as its own build artifact instead". They did not.
+      #
+      # `if-no-files-found: error` is the reason it went unnoticed for so long:
+      # the default is `warn`, which is invisible on a green run.
       - name: Upload Lighthouse reports
         uses: actions/upload-artifact@v7.0.2
         with:
           name: lighthouse-prod
           path: .lighthouseci
+          include-hidden-files: true
+          if-no-files-found: error
 
   security-headers:
     runs-on: ubuntu-latest
