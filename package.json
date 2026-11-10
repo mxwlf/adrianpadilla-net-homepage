@@ -22,21 +22,21 @@
     "sbom": "cyclonedx-npm --output-format JSON --output-file sbom/bom.cdx.json"
   },
   "devDependencies": {
-    "@11ty/eleventy": "^3.1.7",
+    "@11ty/eleventy": "^3.1.8",
     "@axe-core/playwright": "^4.14.0",
     "@azure/static-web-apps-cli": "2.1.0",
     "@cyclonedx/cyclonedx-npm": "6.0.1",
     "@eslint/js": "^10.0.1",
-    "@lhci/cli": "^0.15.1",
-    "@playwright/test": "^1.64.1",
+    "@lhci/cli": "^0.16.0",
+    "@playwright/test": "^1.65.0",
     "clean-css": "^5.3.3",
     "eslint": "^10.14.0",
     "globals": "^17.14.0",
-    "html-validate": "^11.18.0",
+    "html-validate": "^11.19.0",
     "prettier": "^3.9.10",
     "serve": "14.2.7",
-    "stylelint": "^17.16.0",
-    "stylelint-config-standard": "^40.0.0"
+    "stylelint": "^18.0.0",
+    "stylelint-config-standard": "^41.0.0"
   },
   "overrides": {
     "basic-ftp": "^6.2.3",
