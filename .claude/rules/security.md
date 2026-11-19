@@ -14,6 +14,17 @@ paths:
 - Never commit secrets, API keys, or credentials; use environment variables.
 - Dependency changes must pass `dependency-review-action` (fail on severity >= high).
 - CodeQL and OSV scanning must remain enabled; do not disable security workflows.
+- **`npm audit` is deliberately not part of the pipeline.** Its advisories come
+  from the GitHub Advisory Database, which OSV already imports, so `osv-scan`,
+  `dependency-review` and Dependabot alerts see the same findings. What it lacks
+  is a way to record an exception: an accepted risk, like `extract-zip` below,
+  is reported on every run with nowhere to say why or until when, so as a gate it
+  would either fail permanently or end up behind `|| true`. Accepted risks are
+  recorded in `osv-scanner.toml` (with `ignoreUntil`) and as Dependabot
+  dismissals, and nowhere else. The audit summary `npm install` prints locally
+  also counts every package on the path to a vulnerable one, so a single
+  advisory can show up as several "high" findings. Check `osv-scanner.toml`
+  before treating one as new.
 - **Accepted dependency risk: `extract-zip` 2.0.1.** Two high Dependabot advisories
   — GHSA-7pqw-9j4j-h8q3 (arbitrary file write via symlink archive entries) and
   GHSA-jmr9-qjv8-65gv (unvalidated symlink path traversal) — are **dismissed as
