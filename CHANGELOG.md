@@ -4,6 +4,15 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.4.2](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.4.1...v1.4.2) (2026-11-19)
+
+
+### Fixes
+
+* **ci:** make the production header check able to fail ([69f8aad](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/69f8aad98178855e11b1f09ab214ebcfee547a33))
+* **deps:** bump basic-ftp to 6.2.6 for GHSA-5pm8-86m8-9m6r ([c68af25](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/c68af253096e4560afd362c66daad3772ce40512))
+* **deps:** bump basic-ftp to 6.2.6 for GHSA-5pm8-86m8-9m6r ([c850744](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/c8507449482f3186fe9f393f0a2f6affd6ef0382))
+
 ## [1.4.1](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.4.0...v1.4.1) (2026-11-09)
 
 
