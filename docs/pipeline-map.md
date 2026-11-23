@@ -105,13 +105,14 @@ checkout · setup-node (npm cache) · setup-python 3.14 · setup-opentofu 1.13.8
 cache `~/.cache/pre-commit` · `npm ci` · `playwright install --with-deps chromium`
 · **`make ci`** · upload `dist` artifact
 
-`make ci` is `hooks lint tf-fmt-check build lint-html test a11y`:
+`make ci` is `hooks lint tf-fmt-check sbom build lint-html test a11y`:
 
 | Step           | Commands                                                                                                                                                                                                                                                                                   |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `hooks`        | `pre-commit run --all-files` — 12 hooks: sync-pre-commit-deps, trailing-whitespace, end-of-file-fixer, check-yaml, check-added-large-files, check-case-conflict, check-illegal-windows-names, check-merge-conflict, detect-private-key, fix-byte-order-marker, mixed-line-ending, gitleaks |
 | `lint`         | `prettier . --check` · `eslint .` · `stylelint src/assets/css/**/*.css`                                                                                                                                                                                                                    |
 | `tf-fmt-check` | `tofu fmt -recursive -check -diff infra`                                                                                                                                                                                                                                                   |
+| `sbom`         | `cyclonedx-npm` → `sbom/bom.cdx.json` (runs `npm ls --all` first, and fails on an invalid tree)                                                                                                                                                                                            |
 | `build`        | `rm -rf dist` · `eleventy` · `scripts/generate-sitemap.mjs`                                                                                                                                                                                                                                |
 | `lint-html`    | `html-validate dist/**/*.html`                                                                                                                                                                                                                                                             |
 | `test`         | `node --test` · `playwright test` (serves `dist` on :4173)                                                                                                                                                                                                                                 |
@@ -121,7 +122,9 @@ The order matters: `build` populates `dist/`, and the three steps after it read
 it. `lint-html` is separate from `build` so that validation happens once per
 tree rather than once per build, and `a11y` is in this list rather than only in
 `make package`, so an accessibility regression fails on the pull request that
-introduces it instead of while packaging the release that contains it.
+introduces it instead of while packaging the release that contains it. `sbom`
+is in it for the same reason: v1.4.2 was tagged on a lockfile `npm ls` rejected,
+and the release failed while packaging it.
 
 ### `lighthouse` — lighthouse.yml
 
@@ -272,6 +275,7 @@ because it is the evidence for why they were.
 | `html-validate` over `dist/**` | **3** | 8   | No. It left `build` and became `lint-html`, so it runs per tree, not per build.             |
 | Playwright e2e                 | **3** | 4   | Only by flake (2 retries in CI).                                                            |
 | axe / a11y                     | **3** | 1   | Only by flake. It is a gate now; it used to run only while packaging.                       |
+| CycloneDX SBOM (`npm ls`)      | **3** | 1   | No. It is a gate now; it used to run only while packaging.                                  |
 | `pre-commit run --all-files`   | **2** | 3   | No.                                                                                         |
 | `tofu fmt -check`              | **2** | 3   | No.                                                                                         |
 | `npm ci`                       | **5** | 8   | No.                                                                                         |
