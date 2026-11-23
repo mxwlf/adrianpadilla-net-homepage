@@ -235,10 +235,15 @@ clean-venv: ## Remove .venv (rebuild it with `make setup`)
 # a11y must not regress, which means it has to be a gate and not a report. It
 # needs a browser, like `test` does, and ci.yml already installs one.
 #
+# `sbom` is here for the same reason. cyclonedx-npm runs `npm ls --all` and
+# fails on an invalid tree, and it ran only inside `make package` -- so v1.4.2
+# was tagged on a lockfile whose dependency tree npm itself rejected, and the
+# release failed while packaging it. It needs no dist/, so it runs before `build`.
+#
 # The order is load-bearing: `build` populates dist/, and `lint-html`, `test`
 # and `a11y` all read it.
 
-ci: hooks lint tf-fmt-check build lint-html test a11y ## Full gate: git hygiene + lint + infra format + build + HTML + tests + a11y
+ci: hooks lint tf-fmt-check sbom build lint-html test a11y ## Full gate: git hygiene + lint + infra format + SBOM + build + HTML + tests + a11y
 
 hooks: venv ## Run all pre-commit hooks against all files (same hooks as the git hooks)
 	$(PRE_COMMIT) run --all-files --show-diff-on-failure
