@@ -46,9 +46,9 @@ workflows:
         - 'gitleaks/gitleaks-action@v3.0.0'
     '.github/workflows/security.yml':
         - 'actions/checkout@v7.0.1'
-        - 'actions/dependency-review-action@v5.0.0'
+        - 'actions/dependency-review-action@v5.0.1'
         - 'github/codeql-action@v4.39.3'
-        - 'google/osv-scanner-action@v2.7.0'
+        - 'google/osv-scanner-action@v2.7.1'
     '.github/workflows/test-env.yml':
         - 'actions/checkout@v7.0.1'
         - 'azure/login@v3.1.0'
@@ -81,9 +81,9 @@ dependencies:
         commit: 'sha1-64ab729a6294000f5aa4a4bc0b73d1f32bc45510'
         owner_id: 44036562
         repo_id: 642580244
-    'actions/dependency-review-action@v5.0.0':
-        ref: 'v5.0.0'
-        commit: 'sha1-a1d282b36b6f3519aa1f3fc636f609c47dddb294'
+    'actions/dependency-review-action@v5.0.1':
+        ref: 'v5.0.1'
+        commit: 'sha1-bbc44d14a204704ccc493733616cd1e93a0321ec'
         owner_id: 44036562
         repo_id: 476372928
     'actions/setup-node@v7.1.0':
@@ -116,9 +116,9 @@ dependencies:
         commit: 'sha1-e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e'
         owner_id: 90395851
         repo_id: 242854909
-    'google/osv-scanner-action@v2.7.0':
-        ref: 'v2.7.0'
-        commit: 'sha1-b1d267aea5211fa648d9d442fa64b90dbdcbdd36'
+    'google/osv-scanner-action@v2.7.1':
+        ref: 'v2.7.1'
+        commit: 'sha1-32d3cd482bdadfb38b186c0ad1b031902d55d932'
         owner_id: 1342004
         repo_id: 736073144
     'googleapis/release-please-action@v5.0.0':
