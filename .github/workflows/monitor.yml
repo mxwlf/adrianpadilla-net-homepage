@@ -155,24 +155,6 @@ jobs:
             return 0
           }
 
-          # Any of these keeps the full path off cross-origin requests, so all
-          # of them satisfy the intent of the rule. The rule names one in
-          # particular; falling short of that is a notice, not a failure.
-          require_referrer_policy() {
-            local actual; actual="$(lower "$(value_of Referrer-Policy)")"
-            case "$actual" in
-              no-referrer|same-origin|strict-origin|strict-origin-when-cross-origin)
-                echo "[PASS] Referrer-Policy: $actual"
-                if [ "$actual" != "strict-origin-when-cross-origin" ]; then
-                  echo "::notice::Referrer-Policy is '$actual', not the strict-origin-when-cross-origin the rule asks for (known gap)"
-                fi
-                ;;
-              "") echo "[FAIL] Referrer-Policy absent"; FAILED=1 ;;
-              *)  echo "[FAIL] Referrer-Policy: $actual leaks the full URL cross-origin"; FAILED=1 ;;
-            esac
-            return 0
-          }
-
           # A ratchet, not a target. The floor is what production serves today,
           # so the check catches a reduction without being red about a value we
           # already know is low. Raise the floor in the same change that raises
@@ -204,7 +186,7 @@ jobs:
           require_exact X-Frame-Options DENY
           require_present Content-Security-Policy
           require_present Permissions-Policy
-          require_referrer_policy
+          require_exact Referrer-Policy same-origin
           require_hsts
 
           if [ "$FAILED" -eq 1 ]; then

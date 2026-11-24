@@ -54,10 +54,10 @@ instead of quietly de-indexing the live site.
 
 ## Known gap
 
-**The config file is not the whole picture.** `globalHeaders` declares only
-`Permissions-Policy`, `Strict-Transport-Security` and `Content-Security-Policy`,
-but Azure Static Web Apps adds two of its own. What both environments actually
-return:
+**The config file is not the whole picture.** `globalHeaders` declares
+`Permissions-Policy`, `Strict-Transport-Security`, `Content-Security-Policy`,
+`X-Frame-Options` and `Referrer-Policy`, but Azure Static Web Apps adds headers
+of its own. What both environments actually return:
 
 ```console
 $ curl -sI https://test.adrianpadilla.net/ | grep -iE 'content-type-options|referrer|strict-transport'
@@ -66,12 +66,12 @@ referrer-policy: same-origin
 x-content-type-options: nosniff
 ```
 
-So `X-Content-Type-Options` and `Referrer-Policy` **are** served, by the
-platform rather than by us. An earlier version of this section claimed they were
+So `X-Content-Type-Options` **is** served, by the platform rather than by us.
+`Referrer-Policy: same-origin` was too, until it was declared. An earlier version of this section claimed they were
 missing, which was read off the config file instead of off the wire. Check the
 wire.
 
-Two gaps remain, both narrower than they looked:
+One gap remains, narrower than it looked:
 
 - **`Strict-Transport-Security: max-age=86400`** is one step of a staged raise
   from the `max-age=300` trial value. Production wants something on the order
@@ -81,10 +81,12 @@ Two gaps remain, both narrower than they looked:
   the lifetime they last saw even if the header is lowered, so confirm every
   subdomain serves valid HTTPS before the next step. `monitor.yml` fails if
   `max-age` drops below `HSTS_FLOOR`; move the floor with the header.
-- **`Referrer-Policy: same-origin`** is the platform default, not the
-  `strict-origin-when-cross-origin` that `.claude/rules/security.md` asks for.
-  Declaring it in `globalHeaders` overrides the default. Either change the
-  header or change the rule — but they should agree.
+
+`Referrer-Policy: same-origin` used to be a second gap, because the rule asked
+for `strict-origin-when-cross-origin`. The rule was changed to match the served
+value: `same-origin` never sends more than the other value, and nothing on the
+site needs a referrer. The value was Azure's default and is now declared in
+`globalHeaders`, so it no longer depends on the host.
 
 `X-Frame-Options: DENY` is declared in `globalHeaders` even though the CSP's
 `frame-ancestors 'none'` already covers framing, and a CSP-aware browser is
@@ -102,8 +104,8 @@ is the whole value of it.
 
 So: do not remove it as redundant. Redundant is the point.
 
-Each of these alters live response headers, so each belongs in its own change
-with its own verification.
+Any change to these headers alters live responses, so each belongs in its own
+change with its own verification.
 
 ## What used to be here
 
