@@ -56,7 +56,7 @@ jobs:
       # dependency rather than `npx @latest`: Dependabot then tracks its version
       # and osv-scan sees it in package-lock.json, which an ad-hoc npx download
       # would bypass entirely.
-      - run: npm ci
+      - run: make restore
 
       - name: Validate the version input
         env:

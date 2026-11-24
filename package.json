@@ -8,8 +8,9 @@
   "scripts": {
     "dev": "eleventy --serve",
     "build": "eleventy",
+    "format-check": "prettier . --check",
     "fmt": "prettier . --write",
-    "lint": "prettier . --check && eslint . && stylelint \"src/assets/css/**/*.css\"",
+    "lint": "npm run format-check && eslint . && stylelint \"src/assets/css/**/*.css\"",
     "lint:html": "html-validate \"dist/**/*.html\"",
     "test:unit": "node --test",
     "test:e2e": "playwright test --reporter=line",

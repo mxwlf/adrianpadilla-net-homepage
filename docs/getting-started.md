@@ -37,10 +37,10 @@ git clone https://github.com/your-org/webpage-static-template my-site
 cd my-site
 
 # Install dependencies
-npm install
+make restore
 
 # Start the dev server
-npm run dev
+make dev
 ```
 
 Visit `http://localhost:8080` — you should see the default homepage.
@@ -345,10 +345,10 @@ Run these commands before committing or publishing.
 ### Format code
 
 ```bash
-make fmt
+make format
 ```
 
-Auto-formats all files with Prettier. Run this first if any lint check fails with formatting errors.
+Formats site files with Prettier and infrastructure with OpenTofu. Use `make format-check` to check both, or `make fmt` to apply Prettier alone.
 
 ### Lint
 
@@ -365,13 +365,11 @@ Runs:
 ### Build and validate HTML
 
 ```bash
-make build       # compile src/ -> dist/ and generate sitemap.xml
-make lint-html   # validate the built HTML with html-validate
+make lint-html   # build the site and validate its HTML
 ```
 
 `make build` empties `dist/`, compiles `src/` into it and generates
-`sitemap.xml`. `make lint-html` validates what it produced; run it after a
-build, or let `make ci` do both in order. Fix any reported errors before
+`sitemap.xml`. `make lint-html` runs that build before validating the HTML. Fix any reported errors before
 publishing.
 
 ### Unit and e2e tests
@@ -380,7 +378,7 @@ publishing.
 make test
 ```
 
-Runs unit tests (Node built-in runner) and Playwright e2e tests against the built site. The e2e tests check:
+Use `make test-unit` or `make test-e2e` for one suite. The default test target runs unit tests (Node built-in runner) and Playwright e2e tests against the built site. The e2e tests check:
 
 - Pages load and return HTTP 200
 - Navigation links are present and work
@@ -401,7 +399,7 @@ Runs axe-core against every page and asserts zero violations. Fix all reported i
 make ci
 ```
 
-Runs everything in order: lint → build (with HTML validation) → tests. This is identical to what runs in GitHub Actions. If `make ci` passes locally, the CI pipeline will pass.
+Runs the full hooks and generates an SBOM alongside the checks in `make check`. HTML validation, browser tests and accessibility checks share one build. GitHub Actions invokes the same target.
 
 ### Lighthouse
 

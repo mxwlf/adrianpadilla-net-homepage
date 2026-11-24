@@ -46,7 +46,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - run: npm ci
+      - run: make restore
 
       # --config is load-bearing: the default lighthouserc.json sets
       # `staticDistDir`, under which lhci serves ./dist and rewrites the port of
