@@ -4,6 +4,19 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.4.3](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.4.2...v1.4.3) (2026-11-23)
+
+
+### Fixes
+
+* **deps:** add ajv 8 for cyclonedx and run sbom in make ci ([a3649fa](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/a3649fa75d19ea00a65c0761e0a8a9fc91a47da0))
+* **deps:** add ajv 8 for cyclonedx-library's optional peer ([0b210be](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/0b210be4d5221a5dd24064755ca0f295ed650f49))
+
+
+### Build and CI
+
+* run sbom in make ci ([69b7c00](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/69b7c004cff6b83a2055aba255ccf21721ab73e0))
+
 ## [1.4.2](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.4.1...v1.4.2) (2026-11-19)
 
 
