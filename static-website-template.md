@@ -238,57 +238,57 @@ flowchart LR
 
 ```make
 SHELL := /bin/bash
-.DEFAULT_GOAL := help
+.DEFAULT_GOAL := all
+.PHONY: all help restore dev clean build rebuild fmt format format-check lint test test-unit test-e2e a11y lighthouse check ci
 
-.PHONY: help
-help:
-	@echo "Targets:"
-	@echo "  make dev             Run local dev server"
-	@echo "  make build           Build site into dist/"
-	@echo "  make clean           Remove dist/"
-	@echo "  make fmt             Auto-format supported files"
-	@echo "  make lint            Run linters (no auto-fix)"
-	@echo "  make test            Run unit + e2e tests"
-	@echo "  make a11y            Run a11y checks"
-	@echo "  make lighthouse       Run Lighthouse CI locally (lab)"
-	@echo "  make ci              CI bundle (lint + test + build)"
+all: build ## Build the site (default)
 
-.PHONY: dev
-dev:
+help: ## Show target descriptions
+	@awk -F ':.*## ' '/^[a-z0-9-]+:.*## / {print $$1, "-", $$2}' $(MAKEFILE_LIST)
+
+restore: ## Install dependencies from the lockfile
+	npm ci
+
+dev: ## Start the development server
 	npm run dev
 
-.PHONY: clean
-clean:
+clean: ## Remove generated output
 	rm -rf dist .cache .lighthouseci playwright-report test-results
 
-.PHONY: build
-build:
+build: ## Build the site and sitemap
+	rm -rf dist
 	npm run build
 	node scripts/generate-sitemap.mjs
 
-.PHONY: fmt
-fmt:
+rebuild: ## Clean, then build
+	$(MAKE) clean
+	$(MAKE) build
+
+format: fmt ## Format the site
+fmt: ## Apply Prettier
 	npm run fmt
 
-.PHONY: lint
-lint:
+format-check: ## Check formatting with Prettier
+	npm run format-check
+
+lint: ## Run site linters
 	npm run lint
 
-.PHONY: test
-test:
+test: test-unit test-e2e ## Run both test suites
+test-unit: ## Run unit tests
 	npm run test:unit
+
+test-e2e: build ## Run browser tests against the built site
 	npm run test:e2e
 
-.PHONY: a11y
-a11y:
+a11y: build ## Run the accessibility audit
 	npm run test:a11y
 
-.PHONY: lighthouse
-lighthouse:
+lighthouse: build ## Run local Lighthouse budgets
 	npm run lighthouse
 
-.PHONY: ci
-ci: lint test build
+check: lint test ## Run read-only checks
+ci: check ## Run the starter CI suite
 ```
 
 ### `package.json` scripts (example)
@@ -302,6 +302,7 @@ ci: lint test build
     "dev": "eleventy --serve",
     "build": "eleventy",
     "fmt": "prettier . --write",
+    "format-check": "prettier . --check",
     "lint": "prettier . --check && eslint . && stylelint \"src/assets/css/**/*.css\" && html-validate \"src/**/*.html\" \"src/**/*.njk\"",
     "test:unit": "node --test",
     "test:e2e": "playwright test --reporter=line",
@@ -361,7 +362,9 @@ jobs:
           cache: npm
 
       - name: Install
-        run: npm ci
+        run: make restore
+
+      - run: npx playwright install --with-deps chromium
 
       - name: Lint + test + build
         run: make ci
@@ -396,11 +399,10 @@ jobs:
           node-version: 20
           cache: npm
 
-      - run: npm ci
-      - run: make build
+      - run: make restore
 
       - name: Run Lighthouse CI (lab budgets)
-        run: npm run lighthouse
+        run: make lighthouse
 
       - name: Upload Lighthouse reports
         uses: actions/upload-artifact@v4
@@ -578,7 +580,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      - run: make restore
       - run: make build
       - uses: actions/upload-pages-artifact@v3
         with:

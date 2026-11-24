@@ -43,7 +43,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - run: npm ci
+      - run: make restore
 
       - run: npx playwright install --with-deps chromium
 
@@ -221,7 +221,7 @@ jobs:
       # dependency rather than `npx @latest`: Dependabot then tracks its version
       # and osv-scan sees it in package-lock.json, which an ad-hoc npx download
       # would bypass entirely.
-      - run: npm ci
+      - run: make restore
 
       - name: Download the release package
         env:

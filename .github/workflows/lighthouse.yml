@@ -28,11 +28,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - run: npm ci
-      - run: make build
+      - run: make restore
 
       - name: Run Lighthouse CI (lab budgets)
-        run: npm run lighthouse
+        run: make lighthouse
 
       # See the note on the same step in monitor.yml. `.lighthouseci` is a
       # dot-directory and upload-artifact excludes hidden paths by default, so

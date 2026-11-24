@@ -10,7 +10,7 @@
 ## Local contract
 
 - Run `make setup` once per clone or worktree. It creates `.venv/` and activates
-  the committed git hooks; `make ci` fails without it.
+  the committed git hooks. Run `make restore` to install Node dependencies.
 - `make ci` also needs **OpenTofu** (`brew install opentofu`), which `make setup`
   does not install — it checks `infra/` formatting alongside everything else.
 - Always run: `make ci` before opening a PR.

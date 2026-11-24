@@ -8,12 +8,9 @@ paths:
 
 # CI contract rules
 
-- Run `make setup` once per clone/worktree before anything else; `make ci` depends
-  on the `.venv/` it creates, and it activates the committed `.githooks/`.
-- Run `make ci` locally before opening any PR; it must pass cleanly.
-- `make ci` is the only entrypoint CI invokes. Keep workflow YAML a thin wrapper
-  (checkout, toolchains, `make ci`) and put check logic in the `Makefile`,
-  `package.json` or `.pre-commit-config.yaml`.
+- Run `make setup` to activate the committed Git hooks and `make restore` to install the locked Node dependencies.
+- Run `make ci` locally before opening a PR. It runs the same portable verification gate as the CI workflow.
+- Keep workflow YAML a thin wrapper around the corresponding Make targets. Put check logic in the Makefile, package scripts, or pre-commit configuration.
 - A required status check's `context` in `.github/rulesets/main-protection.json`
   is a workflow job id. Never rename one without the other: an unreported
   required check leaves pull requests waiting indefinitely.

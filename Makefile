@@ -1,18 +1,11 @@
 # Makefile for adrianpadilla.net
 #
-# `make ci` is the SINGLE command CI/CD pipelines invoke, and it runs
-# identically on a developer laptop. All check logic lives here, in-repo; the
-# platform YAML in .github/workflows/ is a thin wrapper around it.
-#
-# Two toolchains meet in this file:
-#   - Node (package.json)        — the site itself: build, lint, test, Lighthouse.
-#   - Python (.venv/)            — git hygiene: the pre-commit hooks.
-#
-# Neither is installed globally. `npm ci` manages node_modules/, and
-# `make setup` creates .venv/ from requirements-dev.txt.
+# The CI workflow runs the same verification gate as a local `make ci`.
+# `make restore` installs Node dependencies. `make setup` configures Git hooks.
+# The infrastructure formatting check also requires OpenTofu.
 #
 # Usage:
-#   make            # same as `make help`
+#   make            # same as `make build`
 #   make setup      # create .venv + configure the repo's git config and hooks
 #   make ci         # run the full gate (what pipelines invoke)
 #
@@ -41,7 +34,9 @@
 #        install`. Those scripts run .venv's `pre-commit`, never PATH's.
 
 SHELL := /bin/bash
-.DEFAULT_GOAL := help
+.DEFAULT_GOAL := all
+
+all: build ## Build the site (default)
 
 # ---------------------------------------------------------------------------
 # REPO-LOCAL VIRTUALENV
@@ -84,6 +79,7 @@ INFRA_DIR := infra/$(INFRA_ENV)
 # which one you are working on.
 INFRA_DIRS := $(wildcard infra/*/)
 
+.PHONY: all restore rebuild format format-check check validate test-unit test-e2e
 .PHONY: help setup venv check-python hooks \
         dev build clean clean-venv fmt lint lint-html test a11y lighthouse ci \
         reports sbom package \
@@ -131,6 +127,13 @@ check-python: ## Verify the interpreter used to build .venv is new enough
 # SITE
 # ---------------------------------------------------------------------------
 
+restore: ## Install Node dependencies from the lockfile
+	npm ci
+
+rebuild: ## Clean, then build the site
+	$(MAKE) clean
+	$(MAKE) build
+
 dev: ## Run local dev server with live reload
 	npm run dev
 
@@ -155,23 +158,32 @@ build: ## Build the site into dist/ and generate the sitemap
 	npm run build
 	node scripts/generate-sitemap.mjs
 
-fmt: ## Auto-format supported files
+format: fmt tf-fmt ## Format site files and infrastructure
+
+format-check: tf-fmt-check ## Check site and infrastructure formatting
+	npm run format-check
+
+fmt: ## Format site files with Prettier (compatibility target)
 	npm run fmt
 
 lint: ## Run the site's linters, no auto-fix (Prettier, ESLint, Stylelint)
 	npm run lint
 
-lint-html: ## Validate the built HTML (run `make build` first)
+lint-html: build ## Build and validate the HTML
 	npm run lint:html
 
-test: ## Run unit + e2e tests
+test: test-unit test-e2e ## Run unit and end-to-end tests
+
+test-unit: ## Run Node unit tests
 	npm run test:unit
+
+test-e2e: build ## Test the built site with Playwright
 	npm run test:e2e
 
-a11y: ## Run the axe-core accessibility audit
+a11y: build ## Run the axe-core accessibility audit
 	npm run test:a11y
 
-lighthouse: ## Run Lighthouse CI locally (lab budgets)
+lighthouse: build ## Run Lighthouse CI locally (lab budgets)
 	npm run lighthouse
 
 # ---------------------------------------------------------------------------
@@ -238,12 +250,14 @@ clean-venv: ## Remove .venv (rebuild it with `make setup`)
 # `sbom` is here for the same reason. cyclonedx-npm runs `npm ls --all` and
 # fails on an invalid tree, and it ran only inside `make package` -- so v1.4.2
 # was tagged on a lockfile whose dependency tree npm itself rejected, and the
-# release failed while packaging it. It needs no dist/, so it runs before `build`.
+# release failed while packaging it. It needs no dist/, so it can run independently.
 #
-# The order is load-bearing: `build` populates dist/, and `lint-html`, `test`
-# and `a11y` all read it.
+# The checks that consume dist/ depend on build directly, including under make -j.
 
-ci: hooks lint tf-fmt-check sbom build lint-html test a11y ## Full gate: git hygiene + lint + infra format + SBOM + build + HTML + tests + a11y
+check: lint tf-fmt-check lint-html test a11y ## Run read-only quality checks and tests
+
+ci: hooks ## Full gate: git hygiene + lint + infra format + SBOM + build + HTML + tests + a11y
+	$(MAKE) sbom check
 
 hooks: venv ## Run all pre-commit hooks against all files (same hooks as the git hooks)
 	$(PRE_COMMIT) run --all-files --show-diff-on-failure
@@ -283,6 +297,8 @@ tf-fmt: check-tofu ## Rewrite every infra/ environment into canonical formatting
 # tab-indented comment is handed to the shell, which echoes it.)
 tf-fmt-check: check-tofu ## Fail if any infra/ environment is not canonically formatted
 	$(TOFU) fmt -recursive -check -diff infra
+
+validate: tf-validate ## Validate infrastructure configuration
 
 tf-validate: check-tofu ## Download providers and validate every infra/ environment (no credentials)
 	@for d in $(INFRA_DIRS); do \

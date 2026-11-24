@@ -102,10 +102,10 @@ both rulesets followed by `make rulesets-apply`.
 ### `ci` — ci.yml, the gate
 
 checkout · setup-node (npm cache) · setup-python 3.14 · setup-opentofu 1.13.8 ·
-cache `~/.cache/pre-commit` · `npm ci` · `playwright install --with-deps chromium`
+cache `~/.cache/pre-commit` · `make restore` · `playwright install --with-deps chromium`
 · **`make ci`** · upload `dist` artifact
 
-`make ci` is `hooks lint tf-fmt-check sbom build lint-html test a11y`:
+`make ci` runs `hooks`, then `sbom` and `check`. The latter runs the lint, format, HTML, unit, browser and accessibility checks:
 
 | Step           | Commands                                                                                                                                                                                                                                                                                   |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -118,8 +118,7 @@ cache `~/.cache/pre-commit` · `npm ci` · `playwright install --with-deps chrom
 | `test`         | `node --test` · `playwright test` (serves `dist` on :4173)                                                                                                                                                                                                                                 |
 | `a11y`         | `playwright test -c playwright.a11y.config.ts` — axe-core (serves `dist` on :4174)                                                                                                                                                                                                         |
 
-The order matters: `build` populates `dist/`, and the three steps after it read
-it. `lint-html` is separate from `build` so that validation happens once per
+`lint-html`, `test-e2e`, and `a11y` depend on the same `build`, including under parallel Make. `lint-html` is separate from `build` so that validation happens once per
 tree rather than once per build, and `a11y` is in this list rather than only in
 `make package`, so an accessibility regression fails on the pull request that
 introduces it instead of while packaging the release that contains it. `sbom`
@@ -128,8 +127,7 @@ and the release failed while packaging it.
 
 ### `lighthouse` — lighthouse.yml
 
-checkout · setup-node · `npm ci` · **`make build`** (a second full build) ·
-`lhci autorun` — 3 runs over `staticDistDir: dist`, asserting performance ≥ 0.9
+checkout · setup-node · `make restore` · **`make lighthouse`** (builds the site, then runs `lhci autorun`) — 3 runs over `staticDistDir: dist`, asserting performance ≥ 0.9
 and accessibility / best-practices / SEO ≥ 0.95, uploading to
 `temporary-public-storage` · upload `.lighthouseci`
 
@@ -143,7 +141,7 @@ and accessibility / best-practices / SEO ≥ 0.95, uploading to
 | `gitleaks`          | checkout `fetch-depth: 0` · gitleaks-action, which walks the commit range through the API.                                                                              |
 | `actions-lock`      | install `gh-actions-lock` · `make actions-lock-verify` — resolves every action ref upstream, including transitive ones, and checks the source repository's numeric ids. |
 | `lychee`            | link check over the tree; accepts 429; excludes the two self-referential release URLs.                                                                                  |
-| `infra`             | setup-opentofu · cache `infra/*/.terraform` · `make tf-validate` = `tofu init -backend=false` + `validate`, per environment. No credentials.                            |
+| `infra`             | setup-opentofu · cache `infra/*/.terraform` · `make validate` = `tofu init -backend=false` + `validate`, per environment. No credentials.                               |
 
 ### `release-please` — release-please.yml
 
@@ -154,7 +152,7 @@ manifest, creates the tag and **publishes the Release** — which is what starts
 
 ### `package` — release.yml, the only place an artifact is built
 
-checkout **the tag** · setup-node · `npm ci` · `playwright install chromium` ·
+checkout **the tag** · setup-node · `make restore` · `playwright install chromium` ·
 strip the leading `v` from the tag · **`make package`** · `tar -czf` ·
 **attest-build-provenance** · `gh release upload` (archive, `SHA256SUMS`,
 `manifest.json`)
@@ -204,7 +202,7 @@ cannot land in the middle of that sequence.
 
 `needs: [package, ensure-test]`
 
-checkout the tag · setup-node · `npm ci` (for the pinned SWA CLI) ·
+checkout the tag · setup-node · `make restore` (for the pinned SWA CLI) ·
 `gh release download` + untar · **`gh attestation verify`** against this repo and
 this workflow · `sha256sum -c SHA256SUMS` · azure/login (test identity) ·
 `az staticwebapp secrets list` for the deployment token ·
@@ -218,7 +216,7 @@ staging environments exist
 `workflow_dispatch` with a version, pausing on the `production` environment's
 required reviewer.
 
-checkout · setup-node · `npm ci` · reject a leading `v` and anything that is not
+checkout · setup-node · `make restore` · reject a leading `v` and anything that is not
 a semantic version · `gh release download` + untar · **`gh attestation verify`** ·
 `sha256sum -c SHA256SUMS`, check `manifest.version` matches the requested
 version, check `siteSha256` is a 64-character hex digest before it reaches
@@ -278,7 +276,7 @@ because it is the evidence for why they were.
 | CycloneDX SBOM (`npm ls`)      | **3** | 1   | No. It is a gate now; it used to run only while packaging.                                  |
 | `pre-commit run --all-files`   | **2** | 3   | No.                                                                                         |
 | `tofu fmt -check`              | **2** | 3   | No.                                                                                         |
-| `npm ci`                       | **5** | 8   | No.                                                                                         |
+| `make restore`                 | **5** | 8   | No.                                                                                         |
 | Lighthouse collections         | **6** | 12  | **Yes** — it is a measurement on a shared runner. `numberOfRuns: 3`, now twice not 4×.      |
 | `gh attestation verify`        | **3** | 3   | No, and that is the point. See below.                                                       |
 

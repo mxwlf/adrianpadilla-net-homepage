@@ -43,14 +43,13 @@ staticwebapp.config.json     # Response headers and cache rules, one source for 
 
 ```bash
 make setup        # One time: commit hooks + .venv (see below)
-npm install
-npm run dev       # Dev server with live reload
+make restore      # Install the locked Node dependencies
+make dev       # Dev server with live reload
 ```
 
 Visit `http://localhost:8080`.
 
-`make setup` is a **one-time** step per clone (or per worktree). It is required
-before `make ci` will run, and it activates the commit hooks — see
+`make setup` is a **one-time** step per clone (or per worktree). It activates the commit hooks — see
 [Commit hygiene](#commit-hygiene).
 
 `make ci` also needs **OpenTofu**, which `make setup` does not install: the gate
@@ -79,35 +78,41 @@ is missing and how to get it.
 
 ## Commands
 
-| Command                    | Purpose                                                         |
-| -------------------------- | --------------------------------------------------------------- |
-| `make setup`               | One-time: create `.venv` and activate the committed git hooks   |
-| `make dev`                 | Dev server with live reload                                     |
-| `make build`               | Build site + generate sitemap + validate HTML                   |
-| `make fmt`                 | Auto-format supported files (Prettier)                          |
-| `make lint`                | Run the site's linters (Prettier, ESLint, Stylelint)            |
-| `make hooks`               | Run the pre-commit hooks against all files                      |
-| `make test`                | Run unit + e2e tests                                            |
-| `make a11y`                | axe-core accessibility audit                                    |
-| `make lighthouse`          | Lighthouse CI budget check                                      |
-| `make ci`                  | Full gate: hooks + lint + infra format + build + test           |
-| `make package`             | Assemble the versioned release package (`RELEASE_VERSION=…`)    |
-| `make reports`             | Re-run every gate in report-producing mode into `reports/`      |
-| `make sbom`                | Write a CycloneDX SBOM to `sbom/`                               |
-| `make tf-fmt`              | Rewrite `infra/` into canonical OpenTofu formatting             |
-| `make tf-validate`         | Download providers and validate `infra/` (no credentials)       |
-| `make tf-plan`             | Show what would change in the test environment                  |
-| `make tf-apply`            | Apply the test environment                                      |
-| `make tf-bootstrap`        | One-time: create the Blob Storage holding OpenTofu state        |
-| `make clean`               | Remove `dist/`, caches, and test and release artifacts          |
-| `make clean-venv`          | Remove `.venv` (rebuild with `make setup`)                      |
-| `make rulesets-apply`      | Create/update this repo's branch protection on GitHub           |
-| `make rulesets-diff`       | Report drift between `.github/rulesets/` and GitHub             |
-| `make rulesets-export`     | Pull GitHub's live branch protection back into the repo         |
-| `make environments-apply`  | Create/update the deployment environments on GitHub             |
-| `make environments-diff`   | Report drift between `.github/environments/` and GitHub         |
-| `make actions-lock`        | Regenerate `.github/workflows/actions.lock`                     |
-| `make actions-lock-verify` | Verify the lockfile upstream — what the `actions-lock` job runs |
+| Command                              | Purpose                                                                      |
+| ------------------------------------ | ---------------------------------------------------------------------------- |
+| `make setup`                         | One-time: create `.venv` and activate the committed git hooks                |
+| `make dev`                           | Dev server with live reload                                                  |
+| `make build`                         | Build the site and sitemap (also the default for bare `make` and `make all`) |
+| `make restore`                       | Install Node dependencies from the lockfile                                  |
+| `make rebuild`                       | Clean generated output, then build                                           |
+| `make lint-html`                     | Build and validate the generated HTML                                        |
+| `make format` / `make format-check`  | Apply or check Prettier and infrastructure formatting                        |
+| `make check`                         | Run lint, formatting, HTML, unit, browser, and accessibility checks          |
+| `make test-unit` / `make test-e2e`   | Select the Node or Playwright suite                                          |
+| `make fmt`                           | Auto-format supported files (Prettier)                                       |
+| `make lint`                          | Run the site's linters (Prettier, ESLint, Stylelint)                         |
+| `make hooks`                         | Run the pre-commit hooks against all files                                   |
+| `make test`                          | Run unit + e2e tests                                                         |
+| `make a11y`                          | axe-core accessibility audit                                                 |
+| `make lighthouse`                    | Lighthouse CI budget check                                                   |
+| `make ci`                            | Full gate: hooks, SBOM, and all checks                                       |
+| `make package`                       | Assemble the versioned release package (`RELEASE_VERSION=…`)                 |
+| `make reports`                       | Re-run every gate in report-producing mode into `reports/`                   |
+| `make sbom`                          | Write a CycloneDX SBOM to `sbom/`                                            |
+| `make tf-fmt`                        | Rewrite `infra/` into canonical OpenTofu formatting                          |
+| `make validate` / `make tf-validate` | Download providers and validate `infra/` (no credentials)                    |
+| `make tf-plan`                       | Show what would change in the test environment                               |
+| `make tf-apply`                      | Apply the test environment                                                   |
+| `make tf-bootstrap`                  | One-time: create the Blob Storage holding OpenTofu state                     |
+| `make clean`                         | Remove `dist/`, caches, and test and release artifacts                       |
+| `make clean-venv`                    | Remove `.venv` (rebuild with `make setup`)                                   |
+| `make rulesets-apply`                | Create/update this repo's branch protection on GitHub                        |
+| `make rulesets-diff`                 | Report drift between `.github/rulesets/` and GitHub                          |
+| `make rulesets-export`               | Pull GitHub's live branch protection back into the repo                      |
+| `make environments-apply`            | Create/update the deployment environments on GitHub                          |
+| `make environments-diff`             | Report drift between `.github/environments/` and GitHub                      |
+| `make actions-lock`                  | Regenerate `.github/workflows/actions.lock`                                  |
+| `make actions-lock-verify`           | Verify the lockfile upstream — what the `actions-lock` job runs              |
 
 Run `make` (or `make help`) for the full list, generated from the Makefile. The
 table above omits internal helpers such as `check-python`, `check-tofu` and
@@ -196,7 +201,7 @@ All workflows run via GitHub Actions:
 | `security.yml`       | PR, push, weekly             | CodeQL SAST, OSV-Scanner, dependency review      | partly¹      |
 | `secrets.yml`        | PR, push, weekly             | Gitleaks secret scanning                         | yes          |
 | `linkcheck.yml`      | PR, weekly                   | Broken link detection                            | no²          |
-| `infra.yml`          | PR, push (infra paths)       | `make tf-validate` — OpenTofu, no credentials    | no³          |
+| `infra.yml`          | PR, push (infra paths)       | `make validate` — OpenTofu, no credentials       | no³          |
 | `actions-lock.yml`   | PR, push to `main`/`develop` | Verify `.github/workflows/actions.lock` upstream | not yet⁴     |
 | `release-please.yml` | Push to `develop`            | Version + changelog from Conventional Commits    | n/a          |
 | `release.yml`        | Release published            | Build + attest the package, then deploy to test  | n/a          |

@@ -42,6 +42,8 @@ export default [
       ".cache/",
       ".venv/",
       ".lighthouseci/",
+      "playwright-report/",
+      "test-results/",
       "release/",
       "reports/",
       "sbom/",

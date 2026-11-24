@@ -88,9 +88,9 @@ jobs:
           key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
 
       - name: Install
-        run: npm ci
+        run: make restore
 
-      # Prerequisite installation, like `npm ci` above: `npm ci` fetches the
+      # Prerequisite installation, like `make restore` above: `npm ci` fetches the
       # Playwright package but not the browser binaries its e2e tests drive,
       # and those live outside node_modules. Without this `make ci` fails in
       # CI while passing on any laptop that has them cached. Only chromium is
