@@ -61,7 +61,7 @@ return:
 
 ```console
 $ curl -sI https://test.adrianpadilla.net/ | grep -iE 'content-type-options|referrer|strict-transport'
-strict-transport-security: max-age=300; includeSubDomains
+strict-transport-security: max-age=86400; includeSubDomains
 referrer-policy: same-origin
 x-content-type-options: nosniff
 ```
@@ -73,9 +73,14 @@ wire.
 
 Two gaps remain, both narrower than they looked:
 
-- **`Strict-Transport-Security: max-age=300`** is the trial value. Production
-  wants something on the order of a year, and `includeSubDomains` already
-  reaches `test.`, so raising it commits both hosts.
+- **`Strict-Transport-Security: max-age=86400`** is one step of a staged raise
+  from the `max-age=300` trial value. Production wants something on the order
+  of a year. The apex serves the header with `includeSubDomains`, so it covers
+  every host in the `adrianpadilla.net` zone, including the unrelated
+  services that share it, not only `www.` and `test.`. Browsers keep enforcing
+  the lifetime they last saw even if the header is lowered, so confirm every
+  subdomain serves valid HTTPS before the next step. `monitor.yml` fails if
+  `max-age` drops below `HSTS_FLOOR`; move the floor with the header.
 - **`Referrer-Policy: same-origin`** is the platform default, not the
   `strict-origin-when-cross-origin` that `.claude/rules/security.md` asks for.
   Declaring it in `globalHeaders` overrides the default. Either change the
