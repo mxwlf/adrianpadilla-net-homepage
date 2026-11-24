@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Dependency Review
-        uses: actions/dependency-review-action@v5.0.0
+        uses: actions/dependency-review-action@v5.0.1
         with:
           fail-on-severity: high
 
@@ -57,7 +57,7 @@ jobs:
         # in a subdirectory (the repo root holds a stub with no `runs:` section,
         # which the runner rejects), and no floating major tag is published, so
         # an exact release is required.
-        uses: google/osv-scanner-action/osv-scanner-action@v2.7.0
+        uses: google/osv-scanner-action/osv-scanner-action@v2.7.1
         with:
           # --no-resolve turns off transitive resolution of MANIFESTS. It does
           # not touch lockfiles, so package-lock.json is still scanned in full.
