@@ -56,20 +56,28 @@ instead of quietly de-indexing the live site.
 
 **The config file is not the whole picture.** `globalHeaders` declares
 `Permissions-Policy`, `Strict-Transport-Security`, `Content-Security-Policy`,
-`X-Frame-Options` and `Referrer-Policy`, but Azure Static Web Apps adds headers
-of its own. What both environments actually return:
+`X-Frame-Options`, `Referrer-Policy` and `X-Content-Type-Options`, but Azure
+Static Web Apps adds headers of its own. Measured on 2026-11-24 against test
+running v1.4.3, whose config declared neither of the last two headers and still
+had HSTS at `max-age=300`:
 
 ```console
 $ curl -sI https://test.adrianpadilla.net/ | grep -iE 'content-type-options|referrer|strict-transport'
-strict-transport-security: max-age=86400; includeSubDomains
+strict-transport-security: max-age=300; includeSubDomains
 referrer-policy: same-origin
 x-content-type-options: nosniff
 ```
 
-So `X-Content-Type-Options` **is** served, by the platform rather than by us.
-`Referrer-Policy: same-origin` was too, until it was declared. An earlier version of this section claimed they were
-missing, which was read off the config file instead of off the wire. Check the
-wire.
+So `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin` were
+served by the platform before they were declared, and are now declared in
+`globalHeaders` with the same values so they no longer depend on the host. An
+earlier version of this section claimed they were missing, which was read off
+the config file instead of off the wire. Check the wire:
+`make check-headers URL=https://test.adrianpadilla.net/` runs the same
+assertions as the monitor, and also fails when a header is sent more than once
+with different values. It only notes identical copies, which is what you would
+see if Azure kept its default next to a declared header. Re-capture the block
+above once a release that declares both is on test.
 
 One gap remains, narrower than it looked:
 
@@ -79,8 +87,9 @@ One gap remains, narrower than it looked:
   every host in the `adrianpadilla.net` zone, including the unrelated
   services that share it, not only `www.` and `test.`. Browsers keep enforcing
   the lifetime they last saw even if the header is lowered, so confirm every
-  subdomain serves valid HTTPS before the next step. `monitor.yml` fails if
-  `max-age` drops below `HSTS_FLOOR`; move the floor with the header.
+  subdomain serves valid HTTPS before the next step.
+  `scripts/check-security-headers.sh` fails if `max-age` drops below
+  `HSTS_FLOOR`; move the floor with the header.
 
 `Referrer-Policy: same-origin` used to be a second gap, because the rule asked
 for `strict-origin-when-cross-origin`. The rule was changed to match the served

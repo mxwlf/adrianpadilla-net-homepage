@@ -18,6 +18,7 @@
     "Strict-Transport-Security": "max-age=86400; includeSubDomains",
     "Content-Security-Policy": "default-src 'self'; script-src 'self' https://www.googletagmanager.com; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; require-trusted-types-for 'script';",
     "X-Frame-Options": "DENY",
-    "Referrer-Policy": "same-origin"
+    "Referrer-Policy": "same-origin",
+    "X-Content-Type-Options": "nosniff"
   }
 }

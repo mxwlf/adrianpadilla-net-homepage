@@ -365,6 +365,13 @@ jobs:
             exit 1
           }
 
+          # The same header checks monitor.yml runs against production, here
+          # because this is the last gate before production is approved. Test
+          # serves the same globalHeaders, so a header Azure sends twice, or a
+          # value it overrides, shows up here first. Safe to run only now: the
+          # poll above has proved this environment's host config is live.
+          make check-headers URL="$url"
+
       # Asserts the leak described at the top of this file has not returned.
       - name: Assert no staging environments were created
         env:

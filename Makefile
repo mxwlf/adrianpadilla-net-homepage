@@ -82,7 +82,7 @@ INFRA_DIRS := $(wildcard infra/*/)
 .PHONY: all restore rebuild format format-check check validate test-unit test-e2e
 .PHONY: help setup venv check-python hooks \
         dev build clean clean-venv fmt lint lint-html test a11y lighthouse ci \
-        reports sbom package \
+        reports sbom package check-headers \
         check-tofu tf-fmt tf-fmt-check tf-validate tf-bootstrap tf-init tf-plan tf-apply \
         test-env-status test-env-teardown test-env-restore \
         check-gh-actions-lock actions-lock actions-lock-verify actions-lock-verify-local \
@@ -185,6 +185,10 @@ a11y: build ## Run the axe-core accessibility audit
 
 lighthouse: build ## Run Lighthouse CI locally (lab budgets)
 	npm run lighthouse
+
+check-headers: ## Assert the security headers a live site serves (URL=https://...)
+	@test -n "$(URL)" || { echo 'usage: make check-headers URL=https://adrianpadilla.net' >&2; exit 2; }
+	./scripts/check-security-headers.sh "$(URL)"
 
 # ---------------------------------------------------------------------------
 # RELEASE PACKAGING
