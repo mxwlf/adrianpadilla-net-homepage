@@ -4,6 +4,24 @@ Maintained by [release-please](https://github.com/googleapis/release-please) fro
 [Conventional Commits](https://www.conventionalcommits.org/). Do not edit by hand —
 a release pull request rewrites the sections below it.
 
+## [1.5.0](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.4.3...v1.5.0) (2026-11-25)
+
+
+### Features
+
+* **make:** align development and verification targets ([f868794](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/f868794ce0256e8422c743d295316a901f48705a))
+* **make:** align development and verification targets ([0421998](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/042199805422dc655a1222173eb678a902f50270))
+
+
+### Fixes
+
+* **security:** declare Referrer-Policy same-origin ([72d0dcc](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/72d0dcca5b1ff778bc984f46bf18b0b334275887))
+* **security:** declare Referrer-Policy same-origin ([d126653](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/d126653d200d6419201cea6c0780722f42c07ca6)), closes [#102](https://github.com/mxwlf/adrianpadilla-net-homepage/issues/102)
+* **security:** declare X-Content-Type-Options nosniff ([6ef4430](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/6ef443086d139309bd7602d1c8dedbfd4a7d0303))
+* **security:** declare X-Content-Type-Options nosniff ([245b539](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/245b53998501635082aa6707f9c43b96eda8df64)), closes [#118](https://github.com/mxwlf/adrianpadilla-net-homepage/issues/118)
+* **security:** raise HSTS max-age to one day ([900f24c](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/900f24c8acba54d82e1f0b9ef8c900b51bd39073))
+* **security:** raise HSTS max-age to one day ([11f5e71](https://github.com/mxwlf/adrianpadilla-net-homepage/commit/11f5e717c17305ba0ab0aca5bed032f166986c8f)), closes [#101](https://github.com/mxwlf/adrianpadilla-net-homepage/issues/101)
+
 ## [1.4.3](https://github.com/mxwlf/adrianpadilla-net-homepage/compare/v1.4.2...v1.4.3) (2026-11-23)
 
 
