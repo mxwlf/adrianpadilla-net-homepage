@@ -16,7 +16,7 @@ const GOOD = [
   "content-security-policy: default-src 'self'",
   "permissions-policy: camera=()",
   "referrer-policy: same-origin",
-  "strict-transport-security: max-age=86400; includeSubDomains",
+  "strict-transport-security: max-age=2592001; includeSubDomains",
 ];
 
 function check(lines) {

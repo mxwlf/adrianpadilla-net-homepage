@@ -81,8 +81,9 @@ above once a release that declares both is on test.
 
 One gap remains, narrower than it looked:
 
-- **`Strict-Transport-Security: max-age=86400`** is one step of a staged raise
-  from the `max-age=300` trial value. Production wants something on the order
+- **`Strict-Transport-Security: max-age=2592001`** (30 days and one second) is
+  one step of a staged raise from the `max-age=300` trial value, after
+  `max-age=86400`. Production wants something on the order
   of a year. The apex serves the header with `includeSubDomains`, so it covers
   every host in the `adrianpadilla.net` zone, including the unrelated
   services that share it, not only `www.` and `test.`. Browsers keep enforcing
