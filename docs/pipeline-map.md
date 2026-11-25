@@ -208,8 +208,8 @@ this workflow · `sha256sum -c SHA256SUMS` · azure/login (test identity) ·
 `az staticwebapp secrets list` for the deployment token ·
 `swa deploy package/site --swa-config-location package/host-config/test --env production`
 · smoke test: poll up to 180s until `X-Robots-Tag: noindex` is **present**, then
-assert the canonical still points at production · assert no Static Web Apps
-staging environments exist
+assert the canonical still points at production, then `make check-headers` ·
+assert no Static Web Apps staging environments exist
 
 ### `promote` and `record` — promote-prod.yml
 
@@ -253,8 +253,10 @@ runs `make test-env-{action}`:
 
 - `lighthouse` — fail if `vars.PROD_URL` is unset, then `lhci autorun` 3 runs
   against the live site.
-- `security-headers` — `curl -sI` and check four headers. Emits `::warning::`
-  only, so **this job cannot fail**.
+- `security-headers` — checkout, then `make check-headers` against
+  `vars.PROD_URL`: fails on a missing header, a wrong value, an HSTS `max-age`
+  below the floor, or copies of one header that disagree. Known gaps are a
+  `::notice::`.
 
 ## What runs more than once
 
@@ -344,10 +346,6 @@ Found while tracing the above and deliberately left alone, each with the reason.
   `deploy-test: needs: [package, ensure-test]` unchanged would be safe and
   faster; it was left out of the trigger pruning because it is a different kind
   of change.
-- **`monitor.yml`'s header check cannot fail** — it emits `::warning::` only, so
-  it is a green check that reports nothing. Making it fail is a one-line change,
-  but it would start paging on production drift, which is a decision rather than
-  a cleanup.
 - **The backend-config heredoc is duplicated** between `release.yml`'s
   `ensure-test` and `test-env.yml`: about thirty lines of identical shell in two
   workflow files, which is also the kind of logic the project constitution says
