@@ -108,7 +108,7 @@ require_present() {
 # A ratchet, not a target. The floor is what production serves today, so the
 # check catches a reduction without being red about a value we already know is
 # low. Raise the floor in the same change that raises the header.
-HSTS_FLOOR=86400
+HSTS_FLOOR=2592001
 HSTS_PRODUCTION_LIFETIME=31536000
 
 require_hsts() {
